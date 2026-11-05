@@ -25,6 +25,13 @@ from updater import ZapretUpdater, get_update_meta, MirrorHealthMonitor
 from healer import get_healer, HEALER_LOG
 from zapret2_ui import Zapret2Page
 from version import __version__, APP_TITLE, APP_SUBTITLE, APP_DESCRIPTION
+from engine_params import EngineParams
+from config_manager import (
+    CONFIG_VERSION,
+    load_config_from_file,
+    save_config_to_file,
+    migrate_config,
+)
 
 AppIndicator = None
 try:
@@ -596,6 +603,7 @@ class Zapret2App(Gtk.Window):
         self.healer = get_healer()
         self.healer.on_status_change = self.on_healer_status
         self.healer_enabled = True
+        self.minimize_to_tray = True
 
         # Intercept window close to minimize to tray
         self.connect("delete-event", self.on_delete_event)
@@ -664,40 +672,39 @@ class Zapret2App(Gtk.Window):
 
     def load_config(self):
         try:
-            if os.path.exists(CONFIG_FILE):
-                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    loaded_preset = data.get("preset", self.active_preset)
-                    self.active_preset = loaded_preset if loaded_preset in PRESETS else "general"
-                    loaded_dns = data.get("dns", self.active_dns)
-                    self.active_dns = loaded_dns if loaded_dns in DNS_SERVERS else "cloudflare"
-                    self.active_iface = data.get("iface", self.active_iface)
-                    self.enable_ai_hosts = data.get("ai_hosts", self.enable_ai_hosts)
-                    self.dpi_auto = data.get("dpi_auto", self.dpi_auto)
-                    self.enable_quic = data.get("enable_quic", self.enable_quic)
-                    self.enable_discord_voice = data.get("enable_discord_voice", self.enable_discord_voice)
-                    self.conntrack_limit = data.get("conntrack_limit", self.conntrack_limit)
-                    self.hostlist_mode = data.get("hostlist_mode", self.hostlist_mode)
-                    loaded_engine = data.get("engine_mode", self.engine_mode)
-                    self.engine_mode = loaded_engine if loaded_engine in ("tpws", "nfqws", "nfqws2") else "nfqws2"
-                    self.zapret2_preset = data.get("zapret2_preset", self.zapret2_preset)
-                    self.custom_params = data.get("custom_params", self.custom_params)
-                    self.enable_youtube = data.get("enable_youtube", self.enable_youtube)
-                    self.enable_discord_tcp = data.get("enable_discord_tcp", self.enable_discord_tcp)
-                    self.enable_general_https = data.get("enable_general_https", self.enable_general_https)
-                    self.enable_auto_hostlist = data.get("enable_auto_hostlist", self.enable_auto_hostlist)
-                    self.healer_enabled = data.get("healer_enabled", True)
-                    self.minimize_to_tray = data.get("minimize_to_tray", None)
+            cfg = load_config_from_file(CONFIG_FILE)
+            loaded_preset = cfg.get("preset", self.active_preset)
+            self.active_preset = loaded_preset if loaded_preset in PRESETS else "general"
+            loaded_dns = cfg.get("dns", self.active_dns)
+            self.active_dns = loaded_dns if loaded_dns in DNS_SERVERS else "cloudflare"
+            self.active_iface = cfg.get("iface", self.active_iface)
+            self.enable_ai_hosts = cfg.get("enable_ai_hosts", self.enable_ai_hosts)
+            self.dpi_auto = cfg.get("dpi_auto", self.dpi_auto)
+            self.enable_quic = cfg.get("enable_quic", self.enable_quic)
+            self.enable_discord_voice = cfg.get("enable_discord_voice", self.enable_discord_voice)
+            self.conntrack_limit = cfg.get("conntrack_limit", self.conntrack_limit)
+            self.hostlist_mode = cfg.get("hostlist_mode", self.hostlist_mode)
+            loaded_engine = cfg.get("engine_mode", self.engine_mode)
+            self.engine_mode = loaded_engine if loaded_engine in ("tpws", "nfqws", "nfqws2") else "nfqws2"
+            self.zapret2_preset = cfg.get("zapret2_preset", self.zapret2_preset)
+            self.custom_params = cfg.get("custom_params", self.custom_params)
+            self.enable_youtube = cfg.get("enable_youtube", self.enable_youtube)
+            self.enable_discord_tcp = cfg.get("enable_discord_tcp", self.enable_discord_tcp)
+            self.enable_general_https = cfg.get("enable_general_https", self.enable_general_https)
+            self.enable_auto_hostlist = cfg.get("enable_auto_hostlist", self.enable_auto_hostlist)
+            self.healer_enabled = cfg.get("healer_enabled", True)
+            self.minimize_to_tray = cfg.get("minimize_to_tray", True)
         except Exception as e:
             print("Config load error:", e)
 
     def save_config(self):
         try:
-            os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
             data = {
+                "version": CONFIG_VERSION,
                 "preset": self.active_preset,
                 "dns": self.active_dns,
                 "iface": self.active_iface,
+                "enable_ai_hosts": self.enable_ai_hosts,
                 "ai_hosts": self.enable_ai_hosts,
                 "dpi_auto": self.dpi_auto,
                 "enable_quic": self.enable_quic,
@@ -711,12 +718,10 @@ class Zapret2App(Gtk.Window):
                 "enable_discord_tcp": self.enable_discord_tcp,
                 "enable_general_https": self.enable_general_https,
                 "enable_auto_hostlist": getattr(self, "enable_auto_hostlist", False),
-                "healer_enabled": self.healer_enabled
+                "healer_enabled": self.healer_enabled,
+                "minimize_to_tray": getattr(self, "minimize_to_tray", True),
             }
-            temporary = CONFIG_FILE + ".tmp"
-            with open(temporary, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-            os.replace(temporary, CONFIG_FILE)
+            save_config_to_file(CONFIG_FILE, data)
         except Exception as e:
             print("Config save error:", e)
 
@@ -2430,6 +2435,22 @@ class Zapret2App(Gtk.Window):
         h_status_box.pack_start(self.healer_status_label, False, False, 0)
         vbox.pack_start(h_status_box, False, False, 0)
 
+        # Tray Card
+        card_tray = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        card_tray.get_style_context().add_class("fluent-card")
+        t_info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        t_info.pack_start(Gtk.Label(label="<b>Сворачивать в системный трей при закрытии</b>", use_markup=True, xalign=0), False, False, 0)
+        t_info.pack_start(Gtk.Label(label="При нажатии на крестик окно скрывается в трей, обход продолжает работать", xalign=0), False, False, 0)
+        card_tray.pack_start(t_info, True, True, 0)
+
+        self.sw_tray = Gtk.Switch()
+        self.sw_tray.set_active(getattr(self, "minimize_to_tray", True))
+        self.sw_tray.set_halign(Gtk.Align.END)
+        self.sw_tray.set_valign(Gtk.Align.CENTER)
+        self.sw_tray.connect("notify::active", self.on_tray_setting_toggled)
+        card_tray.pack_end(self.sw_tray, False, False, 0)
+        vbox.pack_start(card_tray, False, False, 0)
+
         # System Details Card
         about_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         about_card.get_style_context().add_class("fluent-card")
@@ -2762,6 +2783,10 @@ X-GNOME-Autostart-enabled=true
             self.healer.start()
         else:
             self.healer.stop()
+
+    def on_tray_setting_toggled(self, switch, _):
+        self.minimize_to_tray = switch.get_active()
+        self.save_config()
 
     def quit_app(self, _=None):
         self.healer.stop()
