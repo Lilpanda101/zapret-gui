@@ -375,27 +375,24 @@ apply_ai_hosts() {
     clean_ai_hosts
 
     if [ "$enable" = "1" ] || [ "$enable" = "true" ]; then
-        echo "Injecting Zapret full AI & unblocked services into /etc/hosts..."
+        echo "Injecting validated Zapret AI & unblocked services into /etc/hosts..."
         local HOSTS_SRC="$DIR/hosts.txt"
         if [ ! -f "$HOSTS_SRC" ] && [ -n "$SUDO_USER" ]; then
             HOSTS_SRC="/home/$SUDO_USER/.local/share/zapret-gui/hosts.txt"
         fi
 
-        echo "" >> /etc/hosts
-        echo "# >>> ZAPRET_GUI_AI_HOSTS" >> /etc/hosts
         if [ -f "$HOSTS_SRC" ]; then
-            cat "$HOSTS_SRC" >> /etc/hosts
+            python3 "$DIR/hosts_manager.py" apply "$HOSTS_SRC" "/etc/hosts"
+            resolvectl flush-caches 2>/dev/null || true
+            echo "AI hosts successfully applied."
         fi
-        echo "# <<< ZAPRET_GUI_AI_HOSTS" >> /etc/hosts
-
-        resolvectl flush-caches 2>/dev/null || true
     fi
 }
 
 clean_ai_hosts() {
     if [ -f /etc/hosts ] && grep -q "ZAPRET_GUI_AI_HOSTS" /etc/hosts; then
-        echo "Cleaning Zapret AI entries from /etc/hosts..."
-        sed -i '/# >>> ZAPRET_GUI_AI_HOSTS/,/# <<< ZAPRET_GUI_AI_HOSTS/d' /etc/hosts
+        echo "Safely cleaning Zapret AI entries from /etc/hosts..."
+        python3 "$DIR/hosts_manager.py" clean "/etc/hosts"
         resolvectl flush-caches 2>/dev/null || true
     fi
 }

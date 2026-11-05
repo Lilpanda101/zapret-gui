@@ -1761,13 +1761,16 @@ class Zapret2App(Gtk.Window):
     def save_hosts_file_content(self):
         k = self.combo_file.get_active_id() or "hosts"
         fpath = self.hosts_files.get(k)
+        if not fpath:
+            return
         start_iter = self.hosts_buffer.get_start_iter()
         end_iter = self.hosts_buffer.get_end_iter()
         text = self.hosts_buffer.get_text(start_iter, end_iter, False)
         try:
-            with open(fpath, "w", encoding="utf-8") as f:
-                f.write(text)
-            self.show_dialog("Сохранение", f"Файл {os.path.basename(fpath)} успешно сохранен.")
+            from hosts_manager import atomic_write, backup_hosts_file
+            backup_hosts_file(fpath)
+            atomic_write(fpath, text)
+            self.show_dialog("Сохранение", f"Файл {os.path.basename(fpath)} успешно сохранён (создан бэкап).")
         except Exception as e:
             self.show_dialog("Ошибка", f"Не удалось сохранить файл: {e}")
 
