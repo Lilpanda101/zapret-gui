@@ -1,0 +1,10 @@
+Zapret GUI for Linux
+Copyright (c) 2026 Zapret GUI Linux Contributors
+
+Portions of behavior, algorithms and preset data are derived from
+zapretdiscordyoutube/zapretgui (MIT), https://cwdnvtsqdc.zapret.moe/zapretdiscordyoutube/zapretgui
+Copyright (c) 2025-2026 censorliber, bol-van, Flowseal and contributors.
+
+Bundled zapret / zapret2 presets, fake binaries, lua and domain lists
+remain under their upstream licenses; see zapret2/presets/, fake/, lists/, zapret2/lua/,
+zapret2/LICENSE.upstream and zapret2/windivert.filter/manual.md.

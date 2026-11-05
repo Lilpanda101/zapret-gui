@@ -1,0 +1,78 @@
+# Zapret 2 Verified Live Hosts (AI, Spotify, GitHub, JetBrains, Microsoft)
+
+# ==============================================================
+# 1. SMART PROXY: AI, Geoblocked Services & Spotify Web Player
+# ==============================================================
+5.175.161.3 generativelanguage.googleapis.com
+5.175.161.3 aicode.googleapis.com
+5.175.161.3 aiplatform.googleapis.com
+5.175.161.3 gemini.google.com
+5.175.161.3 alkalimakersuite-pa.clients6.google.com
+
+
+
+# ==============================================================
+# 2. FASTLY & AKAMAI CDN: GitHub & GitHub Assets
+# ==============================================================
+140.82.114.3 github.com
+185.199.110.154 github.githubassets.com
+185.199.110.133 camo.githubassets.com
+146.75.22.132 objects.githubusercontent.com
+146.75.22.132 raw.githubusercontent.com
+146.75.22.132 release-assets.githubusercontent.com
+146.75.22.132 private-user-images.githubusercontent.com
+146.75.22.132 gist.githubusercontent.com
+146.75.22.132 avatars.githubusercontent.com
+146.75.22.132 media.githubusercontent.com
+146.75.22.132 avatars0.githubusercontent.com
+146.75.22.132 avatars1.githubusercontent.com
+146.75.22.132 avatars2.githubusercontent.com
+146.75.22.132 avatars3.githubusercontent.com
+146.75.22.132 avatars4.githubusercontent.com
+146.75.22.132 avatars5.githubusercontent.com
+146.75.22.132 avatars6.githubusercontent.com
+146.75.22.132 avatars7.githubusercontent.com
+146.75.22.132 avatars8.githubusercontent.com
+146.75.22.132 camo.githubusercontent.com
+146.75.22.132 cloud.githubusercontent.com
+
+# ==============================================================
+# 3. FASTLY & AKAMAI CDN: Spotify Media & Audio CDN
+# ==============================================================
+199.232.210.250 audio-fa-tls13.spotifycdn.com
+151.101.130.250 heads-fa-tls13.spotifycdn.com
+199.232.210.250 image-cdn-fa.spotifycdn.com
+199.232.210.250 pickasso.spotifycdn.com
+199.232.210.250 seed-mix-image.spotifycdn.com
+199.232.210.250 thisis-images.spotifycdn.com
+199.232.210.250 wap.spotifycdn.com
+23.215.2.166 concerts.spotifycdn.com
+23.215.2.166 mrkt.spotifycdn.com
+23.215.2.166 podz-content.spotifycdn.com
+23.215.2.166 web-sdk-assets.spotifycdn.com
+
+# ==============================================================
+# 4. JETBRAINS SPACE & DEVELOPER TOOLS
+# ==============================================================
+108.138.51.110 cloudfront.pkg-cdn.jetbrains.space
+18.203.214.225 pkg.eu-1.jetbrains.space
+18.203.214.225 registry.eu-1.jetbrains.space
+3.167.227.12 ngenix.assets.service.jetbrains.space
+52.30.201.249 lservice.jetbrains.com
+3.92.129.183 agentn.global.api2.cursor.sh
+150.171.109.198 gym.openai.com
+8.47.69.0 sora.com
+18.64.195.35 cdn.auth0.com
+
+# ==============================================================
+# 5. MICROSOFT, CHESS & MEDIA
+# ==============================================================
+150.171.22.11 d.docs.live.net
+52.111.231.48 designerapp.officeapps.live.com
+52.182.143.212 mobile.events.data.microsoft.com
+104.18.137.67 www.chess.com
+145.239.32.210 aaa.deezer.com
+104.199.78.246 jobs.deezer.com
+34.8.236.198 spleeterpro.deezer.com
+18.165.140.109 www.metro.strava.com
+95.100.178.59 www.autodesk.net

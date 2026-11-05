@@ -1,0 +1,28 @@
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+*$py.class
+*.bak
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.cover
+
+# Private / Scratch / Machine-specific files
+.codebase-memory/
+setup_disks.sh
+hosts.txt.bak
+badsum_hosts.txt
+custom_hosts.txt
+
+# Local logs and runtimes
+*.log
+/run/
+.venv/
+env/
+venv/
+.idea/
+.vscode/

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>Zapret GUI Linux</vendor>
+  <vendor_url>https://wiki.zapret.moe</vendor_url>
+  <icon_name>zapret-gui</icon_name>
+
+  <action id="moe.zapret.gui.engine">
+    <description>Запуск и остановка службы обхода DPI Zapret</description>
+    <message>Для изменения правил сетевого экрана и запуска Zapret требуются права администратора</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/home/lilpanda101/Проекты/zapret-gui/engine.sh</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+
+  <action id="moe.zapret.gui.engine.installed">
+    <description>Запуск и остановка службы обхода DPI Zapret (Installed)</description>
+    <message>Для изменения правил сетевого экрана и запуска Zapret требуются права администратора</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/home/lilpanda101/.local/share/zapret-gui/engine.sh</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+</policyconfig>
