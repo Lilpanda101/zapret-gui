@@ -1,0 +1,7 @@
+add table inet zapret_gui
+add chain inet zapret_gui postrouting { type filter hook postrouting priority mangle; policy accept; }
+add rule inet zapret_gui postrouting oifname "eth0" tcp dport { 53, 853 } accept
+add rule inet zapret_gui postrouting oifname "eth0" udp dport { 53, 853 } accept
+add rule inet zapret_gui postrouting oifname "eth0" meta mark & 0x40000000 == 0x00000000 tcp dport { 80, 443-65535 } ct original packets 1-20 queue num 201 bypass
+add rule inet zapret_gui postrouting oifname "eth0" meta mark & 0x40000000 == 0x00000000 udp dport { 3478-3480, 19294-19344, 50000-50100 } queue num 201 bypass
+add rule inet zapret_gui postrouting oifname "eth0" meta mark & 0x40000000 == 0x00000000 udp dport { 1-3477, 3481-19293, 19345-49999, 50101-65535 } ct original packets 1-12 queue num 201 bypass

@@ -32,8 +32,8 @@
 | **Резервный движок nfqws v1** | WinWS v1 | `nfqws` v72.13 через NFQUEUE 200 | 🟢 Есть | `engine.sh:505` |
 | **SOCKS5 прокси (tpws)** | tpws Windows | `tpws` 127.0.0.1:1080 | 🟢 Есть | `engine.sh:455` |
 | **Каталог 136 пресетов** | 136 txt-пресетов Flowseal | 136 txt-пресетов | 🟡 Частично | `zapret2/presets/winws2_builtin/`, требуется нормализация в каталоге |
-| **Адаптер WinDivert → Firewall** | WinDivert драйвер ядра | nftables транслятор правил | 🟡 Частично | `zapret2_core.py:render_nftables` (исправляется UDP в Этапе 1) |
-| **Поддержка Discord Voice / STUN** | WinDivert raw UDP port ranges | nftables unmetered voice | 🟡 Частично | Баг широких портов `443-65535` исправляется в 1.1 |
+| **Адаптер WinDivert → Firewall** | WinDivert драйвер ядра | nftables транслятор правил | 🟢 Есть | `zapret2_core.py:render_nftables` |
+| **Поддержка Discord Voice / STUN** | WinDivert raw UDP port ranges | nftables unmetered voice | 🟢 Есть | `zapret2_core.py` (строгий subset + carve-out) |
 | **Редактор профилей пресета** | Включение/отключение `--skip`, редактирование | Базовый Gtk.TextView, `--skip` | 🟡 Частично | `zapret2_ui.py`, расширение в Этапе 2 |
 | **Автоподбор пресетов** | Оркестратор по полному каталогу | Примитивный перебор 4 пресетов | 🟡 Частично | Будет заменён на полноценный `orchestra/` (Этап 4) |
 | **Auto-Hostlist (сбор доменов)** | Встроенный перехват nfqws2 | `zapret2_core.py:get_auto_hostlist_domains` | 🟢 Есть | `zapret2_core.py`, `zapret2_ui.py` |
@@ -73,3 +73,6 @@
 - **Этап 0:**
   - *Рассинхрон версий:* **Подтверждён.** Встречались `21.1.7` и `21.1.7.210` в `main.py` и `updater.py`. Устранён через единый `version.py`.
   - *Личные/мусорные файлы:* **Подтверждён.** Найдены `setup_disks.sh` (скрипт монтирования Steam NTFS дисков lilpanda101), `hosts.txt.bak`, `.codebase-memory/`. Изолированы в `.gitignore`.
+- **Этап 1.1 (UDP-правила):**
+  - *Утечка широких UDP-диапазонов в voice-ветку без ct-лимита:* **Подтверждён.** В 112 из 136 пресетов `443-65535`, `1-65535` уходили в userspace без ct-лимита (121 нарушение).
+  - *Решение:* Strict subset membership в `is_voice_media_port`, функция `carve_range_from_voices` и разделение правил на unmetered voice (первым) и ct-metered web (вторым). Все 136 пресетов валидны, 0 нарушений, golden snapshots сохранены в `tests/snapshots/`.

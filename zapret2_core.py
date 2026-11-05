@@ -587,23 +587,68 @@ def _ports_expression(ports: Iterable[str]) -> str:
     return "{ " + ", ".join(values) + " }"
 
 
+VOICE_MEDIA_RANGES: tuple[tuple[int, int], ...] = (
+    (3478, 3480),    # STUN / TURN
+    (19294, 19344),  # Discord voice
+    (50000, 50100),  # Discord voice alternate / WebRTC media
+)
 VOICE_MEDIA_PORTS = frozenset({"19294-19344", "50000-50100", "3478-3480"})
 
 
+def _parse_port_range(port_spec: str) -> tuple[int, int]:
+    parts = port_spec.split("-")
+    p_low = int(parts[0])
+    p_high = int(parts[1]) if len(parts) > 1 else p_low
+    return p_low, p_high
+
+
 def is_voice_media_port(port_spec: str) -> bool:
-    """Проверяет, относится ли порт или диапазон портов к голосовым/STUN сервисам."""
-    if port_spec in VOICE_MEDIA_PORTS:
-        return True
+    """Проверяет, является ли порт или диапазон строго подмножеством голосовых/STUN портов."""
     try:
-        parts = port_spec.split("-")
-        p_low = int(parts[0])
-        p_high = int(parts[1]) if len(parts) > 1 else p_low
-        for r_low, r_high in ((3478, 3480), (19294, 19344), (50000, 50100)):
-            if not (p_high < r_low or p_low > r_high):
-                return True
+        p_low, p_high = _parse_port_range(port_spec)
+        return any(r_low <= p_low and p_high <= r_high for r_low, r_high in VOICE_MEDIA_RANGES)
     except (ValueError, IndexError):
-        pass
-    return False
+        return False
+
+
+def carve_range_from_voices(p_low: int, p_high: int,
+                            voice_ranges: tuple[tuple[int, int], ...] = VOICE_MEDIA_RANGES) -> list[str]:
+    """Вырезает голосовые диапазоны из заданного диапазона [p_low, p_high]."""
+    current = [(p_low, p_high)]
+    for v_low, v_high in voice_ranges:
+        next_ranges = []
+        for c_low, c_high in current:
+            if c_high < v_low or c_low > v_high:
+                next_ranges.append((c_low, c_high))
+            else:
+                if c_low < v_low:
+                    next_ranges.append((c_low, v_low - 1))
+                if c_high > v_high:
+                    next_ranges.append((v_high + 1, c_high))
+        current = next_ranges
+    return [str(l) if l == h else f"{l}-{h}" for l, h in current]
+
+
+def carve_web_ports(web_ports: Iterable[str]) -> list[str]:
+    """Для любого широкого диапазона в web_ports вырезает интервалы Discord/STUN."""
+    result: list[str] = []
+    for p in web_ports:
+        try:
+            p_low, p_high = _parse_port_range(p)
+        except (ValueError, IndexError):
+            if p not in result:
+                result.append(p)
+            continue
+
+        overlaps = any(not (p_high < v_low or p_low > v_high) for v_low, v_high in VOICE_MEDIA_RANGES)
+        if overlaps:
+            for carved in carve_range_from_voices(p_low, p_high):
+                if carved not in result:
+                    result.append(carved)
+        else:
+            if p not in result:
+                result.append(p)
+    return result
 
 
 def render_nftables(spec: FirewallSpec, iface: str, qnum: int = 201,
@@ -631,17 +676,18 @@ def render_nftables(spec: FirewallSpec, iface: str, qnum: int = 201,
             f"{_ports_expression(spec.tcp_out)} ct original packets 1-20 queue num {qnum} bypass"
         )
     if spec.udp_out:
-        web_udp = [p for p in spec.udp_out if not is_voice_media_port(p)]
         voice_udp = [p for p in spec.udp_out if is_voice_media_port(p)]
-        if web_udp:
-            lines.append(
-                f"add rule inet {table} postrouting oifname \"{iface}\" {mark}udp dport "
-                f"{_ports_expression(web_udp)} ct original packets 1-12 queue num {qnum} bypass"
-            )
+        raw_web_udp = [p for p in spec.udp_out if not is_voice_media_port(p)]
+        web_udp = carve_web_ports(raw_web_udp)
         if voice_udp:
             lines.append(
                 f"add rule inet {table} postrouting oifname \"{iface}\" {mark}udp dport "
                 f"{_ports_expression(voice_udp)} queue num {qnum} bypass"
+            )
+        if web_udp:
+            lines.append(
+                f"add rule inet {table} postrouting oifname \"{iface}\" {mark}udp dport "
+                f"{_ports_expression(web_udp)} ct original packets 1-12 queue num {qnum} bypass"
             )
     if spec.tcp_in:
         lines.append(
@@ -649,17 +695,18 @@ def render_nftables(spec: FirewallSpec, iface: str, qnum: int = 201,
             f"{_ports_expression(spec.tcp_in)} ct reply packets 1-10 queue num {qnum} bypass"
         )
     if spec.udp_in:
-        web_udp_in = [p for p in spec.udp_in if not is_voice_media_port(p)]
         voice_udp_in = [p for p in spec.udp_in if is_voice_media_port(p)]
-        if web_udp_in:
-            lines.append(
-                f"add rule inet {table} prerouting iifname \"{iface}\" udp sport "
-                f"{_ports_expression(web_udp_in)} ct reply packets 1-3 queue num {qnum} bypass"
-            )
+        raw_web_udp_in = [p for p in spec.udp_in if not is_voice_media_port(p)]
+        web_udp_in = carve_web_ports(raw_web_udp_in)
         if voice_udp_in:
             lines.append(
                 f"add rule inet {table} prerouting iifname \"{iface}\" udp sport "
                 f"{_ports_expression(voice_udp_in)} queue num {qnum} bypass"
+            )
+        if web_udp_in:
+            lines.append(
+                f"add rule inet {table} prerouting iifname \"{iface}\" udp sport "
+                f"{_ports_expression(web_udp_in)} ct reply packets 1-3 queue num {qnum} bypass"
             )
     if spec.tcp_empty:
         lines.append(

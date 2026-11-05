@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Zapret 2 GUI for Arch Linux / CachyOS (v21.1.7.210)
+Zapret 2 GUI for Arch Linux / CachyOS.
 Modern Fluent-style DPI bypass & diagnostics suite inspired by Windows Zapret 2.
 """
 
