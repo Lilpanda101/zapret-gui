@@ -158,11 +158,47 @@ EOF
     echo "Network tuning applied successfully."
 }
 
+verify_dns_resolver() {
+    local ip="$1"
+    # Fast TCP probe for DoT (853) or DNS (53)
+    timeout 1.5 bash -c "</dev/tcp/$ip/853" 2>/dev/null && return 0
+    timeout 1.5 bash -c "</dev/tcp/$ip/53" 2>/dev/null && return 0
+    return 1
+}
+
 apply_dns() {
     local iface="$1"
     local provider="$2"
     local dev=$(get_active_iface "$iface")
     [ -z "$dev" ] && return 0
+
+    if [ "$provider" != "system" ] && [ "$provider" != "none" ]; then
+        local TEST_IP=""
+        case "$provider" in
+            cloudflare) TEST_IP="1.1.1.1" ;;
+            yandex) TEST_IP="77.88.8.8" ;;
+            google) TEST_IP="8.8.8.8" ;;
+            adguard) TEST_IP="94.140.14.14" ;;
+            quad9) TEST_IP="9.9.9.9" ;;
+            dns_ai) TEST_IP="194.87.196.13" ;;
+            geohide) TEST_IP="193.233.155.105" ;;
+            shecan) TEST_IP="178.22.122.100" ;;
+        esac
+
+        if [ -n "$TEST_IP" ]; then
+            if ! verify_dns_resolver "$TEST_IP"; then
+                echo "WARNING: DNS resolver $TEST_IP ($provider) unreachable. Checking fallback..." >&2
+                if verify_dns_resolver "1.1.1.1"; then
+                    echo "Falling back to Cloudflare DNS..." >&2
+                    provider="cloudflare"
+                else
+                    echo "ERROR: Fallback DNS unreachable. Reverting to system defaults..." >&2
+                    revert_dns "$iface"
+                    return 1
+                fi
+            fi
+        fi
+    fi
 
     echo "Configuring DNS ($provider) on interface $dev..."
     resolvectl default-route "$dev" yes 2>/dev/null || true
@@ -1070,13 +1106,31 @@ run_blockcheck2() {
         echo "ERROR: /opt/zapret2/blockcheck2.sh not found" >&2
         return 2
     fi
+
+    # Track if engine was actively running before blockcheck
+    local ENGINE_WAS_RUNNING=0
+    if systemctl is-active --quiet zapret-nfqws || systemctl is-active --quiet zapret2-nfqws || [ -f "$STATE_DIR/nft-active" ]; then
+        ENGINE_WAS_RUNNING=1
+    fi
+
+    # Guarantee DNS restoration if engine was inactive
+    restore_blockcheck_dns() {
+        if [ "$ENGINE_WAS_RUNNING" -eq 0 ]; then
+            echo "Restoring DNS after blockcheck run (engine was not running)..."
+            revert_dns "$IFACE"
+        fi
+    }
+    trap restore_blockcheck_dns EXIT INT TERM
+
     apply_dns "$IFACE" "$DNS_PROVIDER"
     sleep 1
     echo "Running non-interactive Blockcheck2 for $DOMAIN. Other bypass engines must be stopped."
     timeout 900 env BATCH=1 TEST=standard DOMAINS="$DOMAIN" IPVS=4 \
         ENABLE_HTTP=0 ENABLE_HTTPS_TLS12=1 ENABLE_HTTPS_TLS13=0 ENABLE_HTTP3=0 \
         REPEATS=1 PARALLEL=0 SCANLEVEL=veryquick \
-        /opt/zapret2/blockcheck2.sh
+        /opt/zapret2/blockcheck2.sh || true
+    trap - EXIT INT TERM
+    restore_blockcheck_dns
 }
 
 sync_bases() {

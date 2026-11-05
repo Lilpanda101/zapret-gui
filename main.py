@@ -2089,6 +2089,12 @@ class Zapret2App(Gtk.Window):
                             restore_error = "\n\nОШИБКА ВОССТАНОВЛЕНИЯ ДВИЖКА:\n" + (restored.stderr or restored.stdout)
                     except Exception as exc:
                         restore_error = "\n\nОШИБКА ВОССТАНОВЛЕНИЯ ДВИЖКА:\n" + str(exc)
+                else:
+                    # Движок не был запущен -> обязательно восстанавливаем системный DNS
+                    try:
+                        run_engine("dns", self.active_iface, "system")
+                    except Exception:
+                        pass
 
             def finish():
                 self.blockcheck2_buffer.set_text(output[-14000:] + restore_error)

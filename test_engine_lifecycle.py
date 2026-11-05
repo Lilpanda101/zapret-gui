@@ -52,3 +52,17 @@ def test_status_engine_inspects_nft_list_table():
     assert 'echo "NFQWS_ONLY"' in content
 
 
+def test_dns_resolver_preflight_in_engine_sh():
+    content = ENGINE_SH_PATH.read_text(encoding="utf-8")
+    assert "verify_dns_resolver()" in content
+    assert "revert_dns" in content
+    assert "restore_blockcheck_dns()" in content
+
+
+def test_main_restores_dns_after_blockcheck_when_engine_was_stopped():
+    main_py = Path(__file__).parent / "main.py"
+    content = main_py.read_text(encoding="utf-8")
+    assert 'run_engine("dns", self.active_iface, "system")' in content
+
+
+
