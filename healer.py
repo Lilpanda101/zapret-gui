@@ -168,9 +168,12 @@ def run_engine_cmd(*args):
 
 def get_engine_status():
     ok, stdout, stderr = run_engine_cmd("status")
-    if ok and stdout.strip() == "ACTIVE":
-        return True, stdout
-    return False, stderr or stdout
+    status_str = (stdout or "").strip()
+    if ok and status_str == "ACTIVE":
+        return True, "ACTIVE"
+    if status_str == "NFQWS_ONLY":
+        return False, "NFQWS_ONLY"
+    return False, status_str or stderr or "INACTIVE"
 
 
 def restart_engine(config):
@@ -325,6 +328,20 @@ class AutoHealer:
 
         engine_ok, engine_info = get_engine_status()
         if not engine_ok:
+            if engine_info == "NFQWS_ONLY":
+                log("Broken engine state: NFQWS is running without nftables rules (NFQWS_ONLY). Healing...", "WARN")
+                self.state.is_healthy = False
+                self.state.save()
+                self._notify_status(False, "Broken: NFQWS without nftables")
+                can_restart, reason = self.state.can_restart()
+                if can_restart:
+                    if restart_engine(config):
+                        self.state.record_restart()
+                        log("Engine and nftables recovered successfully")
+                else:
+                    log(f"Cannot restart to heal NFQWS_ONLY: {reason}", "WARN")
+                return
+
             log("Engine is not running, skipping health check", "WARN")
             self.state.is_healthy = False
             self.state.save()

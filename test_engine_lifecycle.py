@@ -45,3 +45,10 @@ def test_no_false_success_before_health_verified():
         "nft-active marker must NOT be created before launching the engine!"
     )
 
+
+def test_status_engine_inspects_nft_list_table():
+    content = ENGINE_SH_PATH.read_text(encoding="utf-8")
+    assert 'nft list table inet "$NFT_TABLE"' in content
+    assert 'echo "NFQWS_ONLY"' in content
+
+

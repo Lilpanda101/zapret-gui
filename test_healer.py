@@ -299,3 +299,37 @@ def test_healer_ignores_core_internet_outage(monkeypatch):
     # Must NOT increment fail count or trigger restart during general network outage
     assert instance.state.fail_count == 0
 
+
+def test_healer_recovers_from_nfqws_only(monkeypatch):
+    instance = healer.AutoHealer.__new__(healer.AutoHealer)
+    instance.on_status_change = None
+
+    restarted = []
+
+    class State:
+        fail_count = 0
+        dns_fail_count = 0
+        is_healthy = True
+        last_check = {}
+
+        def save(self):
+            pass
+
+        def can_restart(self):
+            return True, "OK"
+
+        def record_restart(self):
+            restarted.append("recorded")
+
+    instance.state = State()
+    monkeypatch.setattr(healer, "load_config", lambda: {"engine_mode": "nfqws2"})
+    monkeypatch.setattr(healer, "get_engine_status", lambda: (False, "NFQWS_ONLY"))
+    monkeypatch.setattr(healer, "restart_engine", lambda cfg: restarted.append("restart") or True)
+
+    instance._check_and_heal()
+
+    assert instance.state.is_healthy is False
+    assert "restart" in restarted
+    assert "recorded" in restarted
+
+

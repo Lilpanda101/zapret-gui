@@ -404,10 +404,19 @@ status_engine() {
         echo "ACTIVE"
         exit 0
     fi
-    if [ -f "$NFQWS2_STATE_DIR/nft-active" ]; then
+
+    # Check kernel table directly (Single Source of Truth)
+    if nft list table inet "$NFT_TABLE" >/dev/null 2>&1; then
+        : > "$STATE_DIR/nft-active" 2>/dev/null || true
+        echo "ACTIVE"
+        exit 0
+    elif [ "$EUID" -ne 0 ] && [ -f "$STATE_DIR/nft-active" ]; then
+        # When unprivileged user cannot inspect kernel netlink, fallback to root marker
         echo "ACTIVE"
         exit 0
     fi
+
+    rm -f "$STATE_DIR/nft-active" 2>/dev/null || true
     echo "NFQWS_ONLY"
     exit 2
 }
