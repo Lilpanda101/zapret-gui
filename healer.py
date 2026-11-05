@@ -177,26 +177,10 @@ def get_engine_status():
 
 
 def restart_engine(config):
-    preset = config.get("preset", config.get("active_preset", "general"))
-    iface = config.get("iface", config.get("active_iface", "any"))
-    dns = config.get("dns", config.get("active_dns", "cloudflare"))
-    ai = "1" if config.get("ai_hosts", config.get("enable_ai_hosts", True)) else "0"
-    quic = "1" if config.get("enable_quic", True) else "0"
-    voice = "1" if config.get("enable_discord_voice", False) else "0"
-    ct = str(config.get("conntrack_limit", 1048576))
-    hmode = config.get("hostlist_mode", "all_except_exclude")
-    emode = config.get("engine_mode", "nfqws2")
-    cparams = config.get("custom_params", "")
-    z2preset = config.get("zapret2_preset", "Default (circular)")
-    youtube = "1" if config.get("enable_youtube", True) else "0"
-    discord_tcp = "1" if config.get("enable_discord_tcp", True) else "0"
-    general_https = "1" if config.get("enable_general_https", True) else "0"
-
-    log(f"Restarting engine with preset={z2preset if emode == 'nfqws2' else preset}")
-    ok, stdout, stderr = run_engine_cmd(
-        "start", preset, iface, dns, ai, quic, voice, ct, hmode, emode,
-        cparams, z2preset, youtube, discord_tcp, general_https,
-    )
+    from engine_params import EngineParams
+    params = EngineParams.from_dict(config)
+    log(f"Restarting engine with preset={params.zapret2_preset if params.engine_mode == 'nfqws2' else params.preset}")
+    ok, stdout, stderr = run_engine_cmd(*params.to_argv("start"))
     if ok:
         log("Engine restarted successfully")
     else:

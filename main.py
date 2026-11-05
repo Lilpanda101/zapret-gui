@@ -2167,46 +2167,21 @@ class Zapret2App(Gtk.Window):
         def worker():
             results = {}
             for preset in candidate_presets:
+                from engine_params import EngineParams
                 if is_zapret2:
                     p_title = preset
                     GLib.idle_add(self.btn_auto_preset.set_label, f"⏳ Тест: {p_title}...")
-                    run_engine(
-                        "start",
-                        self.active_preset,
-                        self.active_iface,
-                        self.active_dns,
-                        "1" if self.enable_ai_hosts else "0",
-                        "1" if self.enable_quic else "0",
-                        "1" if self.enable_discord_voice else "0",
-                        str(self.conntrack_limit),
-                        self.hostlist_mode,
-                        "nfqws2",
-                        self.custom_params,
-                        preset,
-                        "1" if self.enable_youtube else "0",
-                        "1" if self.enable_discord_tcp else "0",
-                        "1" if self.enable_general_https else "0",
-                    )
+                    p_args = EngineParams.from_app(self)
+                    p_args.engine_mode = "nfqws2"
+                    p_args.zapret2_preset = preset
+                    run_engine(*p_args.to_argv("start"))
                 else:
                     p_title = PRESETS.get(preset, {}).get("title", preset).split("(")[0].strip()
                     GLib.idle_add(self.btn_auto_preset.set_label, f"⏳ Тест: {p_title}...")
-                    run_engine(
-                        "start",
-                        preset,
-                        self.active_iface,
-                        self.active_dns,
-                        "1" if self.enable_ai_hosts else "0",
-                        "1" if self.enable_quic else "0",
-                        "1" if self.enable_discord_voice else "0",
-                        str(self.conntrack_limit),
-                        self.hostlist_mode,
-                        "nfqws",
-                        self.custom_params,
-                        self.zapret2_preset,
-                        "1" if self.enable_youtube else "0",
-                        "1" if self.enable_discord_tcp else "0",
-                        "1" if self.enable_general_https else "0",
-                    )
+                    p_args = EngineParams.from_app(self)
+                    p_args.engine_mode = "nfqws"
+                    p_args.preset = preset
+                    run_engine(*p_args.to_argv("start"))
                 time.sleep(1.2)
 
                 ok_count = 0
@@ -2577,17 +2552,8 @@ class Zapret2App(Gtk.Window):
             self.start_engine()
 
     def engine_command(self, command="start"):
-        return (
-            command, self.active_preset, self.active_iface, self.active_dns,
-            "1" if self.enable_ai_hosts else "0",
-            "1" if self.enable_quic else "0",
-            "1" if self.enable_discord_voice else "0",
-            str(self.conntrack_limit), self.hostlist_mode, self.engine_mode,
-            self.custom_params, self.zapret2_preset,
-            "1" if self.enable_youtube else "0",
-            "1" if self.enable_discord_tcp else "0",
-            "1" if self.enable_general_https else "0",
-        )
+        from engine_params import EngineParams
+        return EngineParams.from_app(self).to_argv(command)
 
     def start_engine(self):
         self.btn_toggle.set_sensitive(False)

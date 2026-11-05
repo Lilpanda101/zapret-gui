@@ -35,6 +35,35 @@ def test_main_and_healer_use_identical_engine_contract(monkeypatch):
     assert captured == [main_args]
 
 
+def test_engine_params_to_argv_exact_defaults():
+    from engine_params import EngineParams
+
+    expected = (
+        "start", "general", "any", "cloudflare", "1", "1", "1", "12",
+        "all_except_exclude", "nfqws2", "", "Default (circular)", "1", "1", "1"
+    )
+    params = EngineParams()
+    assert params.to_argv("start") == expected
+
+
+def test_engine_params_clamps_and_sanitizes_conntrack():
+    from engine_params import EngineParams
+
+    # Accidental 1 million limit from sysctl nf_conntrack_max
+    params = EngineParams.from_dict({"conntrack_limit": 1048576})
+    assert params.conntrack_limit == 12
+    assert params.to_argv("start")[7] == "12"
+
+    # Negative / string invalid
+    params2 = EngineParams.from_dict({"conntrack_limit": -5})
+    assert params2.conntrack_limit == 12
+
+    # Valid in-range value
+    params3 = EngineParams.from_dict({"conntrack_limit": 20})
+    assert params3.conntrack_limit == 20
+    assert params3.to_argv("start")[7] == "20"
+
+
 def test_programmatic_engine_combo_does_not_restart_twice():
     app = dummy_app()
     app.save_config = lambda: (_ for _ in ()).throw(AssertionError("unexpected save"))
