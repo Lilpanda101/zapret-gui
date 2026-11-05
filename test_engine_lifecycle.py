@@ -27,3 +27,21 @@ def test_watchdog_not_in_tmp():
     content = ENGINE_SH_PATH.read_text(encoding="utf-8")
     assert "/tmp/zapret-watchdog.sh" not in content
     assert "/tmp/zapret-gui.pid" not in content
+
+
+def test_wait_for_process_start_and_rollback_defined():
+    content = ENGINE_SH_PATH.read_text(encoding="utf-8")
+    assert "wait_for_process_start()" in content
+    assert "rollback_startup()" in content
+    assert 'wait_for_process_start "zapret2-nfqws"' in content
+    assert 'wait_for_process_start "zapret-tpws"' in content
+    assert 'wait_for_process_start "zapret-nfqws"' in content
+
+
+def test_no_false_success_before_health_verified():
+    content = ENGINE_SH_PATH.read_text(encoding="utf-8")
+    # nft-active marker must only be created after wait_for_process_start succeeds
+    assert not re.search(r'nft-active"\s*\n\s*systemctl stop', content), (
+        "nft-active marker must NOT be created before launching the engine!"
+    )
+

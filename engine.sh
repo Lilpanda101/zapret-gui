@@ -46,6 +46,59 @@ acquire_lock() {
     fi
 }
 
+wait_for_process_start() {
+    local unit="$1"
+    local pid_file="$2"
+    local max_wait_sec="${3:-5}"
+    local step_ms=200
+    local elapsed_ms=0
+    local max_ms=$((max_wait_sec * 1000))
+
+    while [ "$elapsed_ms" -lt "$max_ms" ]; do
+        if systemctl is-active --quiet "$unit" 2>/dev/null; then
+            local mpid
+            mpid=$(systemctl show -p MainPID --value "$unit" 2>/dev/null || true)
+            if [ -n "$mpid" ] && [ "$mpid" != "0" ] && kill -0 "$mpid" 2>/dev/null; then
+                echo "$mpid" > "$pid_file"
+                return 0
+            fi
+        fi
+
+        if systemctl is-failed --quiet "$unit" 2>/dev/null; then
+            return 1
+        fi
+
+        if [ -s "$pid_file" ]; then
+            local fpid
+            fpid=$(cat "$pid_file" 2>/dev/null || true)
+            if [ -n "$fpid" ] && kill -0 "$fpid" 2>/dev/null; then
+                return 0
+            fi
+        fi
+
+        sleep 0.2
+        elapsed_ms=$((elapsed_ms + step_ms))
+    done
+    return 1
+}
+
+rollback_startup() {
+    local iface="$1"
+    echo "ERROR: Engine startup failed, performing clean rollback..." >&2
+    tail -n 20 "$LOGFILE" >&2 2>/dev/null || true
+    systemctl stop zapret-watchdog zapret-nfqws zapret2-nfqws zapret-tpws 2>/dev/null || true
+    systemctl reset-failed zapret-watchdog zapret-nfqws zapret2-nfqws zapret-tpws 2>/dev/null || true
+    if [ -f "$PIDFILE" ]; then
+        local PID
+        PID=$(cat "$PIDFILE" 2>/dev/null || true)
+        [ -n "$PID" ] && kill -9 "$PID" 2>/dev/null || true
+        rm -f "$PIDFILE"
+    fi
+    nft delete table inet "$NFT_TABLE" 2>/dev/null || true
+    rm -f "$STATE_DIR/nft-active"
+    return 1
+}
+
 # Function to check root
 check_root() {
     if [ "$EUID" -ne 0 ]; then
@@ -385,10 +438,16 @@ start_nfqws2_engine() {
     local ENABLE_AI_HOSTS="$3"
 
     echo "Applying Zapret2 nftables rules..."
-    nft -c -f "$NFQWS2_RUNTIME/firewall.nft" || return 1
-    nft -f "$NFQWS2_RUNTIME/firewall.nft"
-    mkdir -p "$NFQWS2_STATE_DIR"
-    : > "$NFQWS2_STATE_DIR/nft-active"
+    if ! nft -c -f "$NFQWS2_RUNTIME/firewall.nft"; then
+        echo "ERROR: Invalid nftables syntax generated" >&2
+        return 1
+    fi
+    if ! nft -f "$NFQWS2_RUNTIME/firewall.nft"; then
+        echo "ERROR: Failed to load nftables rules into kernel" >&2
+        nft delete table inet "$NFT_TABLE" 2>/dev/null || true
+        rm -f "$STATE_DIR/nft-active"
+        return 1
+    fi
 
     # Truncate logfile if it exceeds 10MB to protect memory/tmpfs
     if [ -f "$LOGFILE" ] && [ "$(stat -c%s "$LOGFILE" 2>/dev/null || echo 0)" -gt 10485760 ]; then
@@ -410,20 +469,13 @@ start_nfqws2_engine() {
         echo $! > "$PIDFILE"
     fi
 
-    sleep 0.8
-    local NFQWS2_PID
-    NFQWS2_PID=$(systemctl show -p MainPID --value zapret2-nfqws 2>/dev/null || true)
-    if [ -n "$NFQWS2_PID" ] && [ "$NFQWS2_PID" != "0" ]; then
-        echo "$NFQWS2_PID" > "$PIDFILE"
-    fi
-    if ! kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null; then
-        echo "ERROR: nfqws2 exited during startup" >&2
-        tail -n 20 "$LOGFILE" >&2 2>/dev/null || true
-        nft delete table inet "$NFT_TABLE" 2>/dev/null || true
-        rm -f "$NFQWS2_STATE_DIR/nft-active"
+    if ! wait_for_process_start "zapret2-nfqws" "$PIDFILE" 5; then
+        rollback_startup "$IFACE"
         return 1
     fi
 
+    # Only mark active and configure DNS AFTER process is guaranteed alive
+    : > "$STATE_DIR/nft-active"
     apply_dns "$IFACE" "$DNS_PROVIDER"
     apply_ai_hosts "$ENABLE_AI_HOSTS"
     echo "Zapret2 nfqws2 started with PID: $(cat "$PIDFILE")"
@@ -522,18 +574,15 @@ start_engine() {
             echo $! > "$PIDFILE"
         fi
 
-        sleep 0.4
-        local TPWS_PID=$(systemctl show -p MainPID --value zapret-tpws 2>/dev/null || true)
-        if [ -n "$TPWS_PID" ] && [ "$TPWS_PID" != "0" ]; then
-            echo "$TPWS_PID" > "$PIDFILE"
-        elif [ ! -s "$PIDFILE" ]; then
-            pgrep -x tpws | head -n1 > "$PIDFILE" 2>/dev/null || true
+        if ! wait_for_process_start "zapret-tpws" "$PIDFILE" 5; then
+            rollback_startup "$IFACE"
+            return 1
         fi
 
         apply_dns "$IFACE" "$DNS_PROVIDER"
         apply_ai_hosts "$ENABLE_AI_HOSTS"
 
-        echo "Zapret TPWS engine started successfully with PID: $(cat "$PIDFILE" 2>/dev/null || pgrep -f "$DIR/bin/tpws" | head -n1)"
+        echo "Zapret TPWS engine started successfully with PID: $(cat "$PIDFILE" 2>/dev/null || true)"
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] Zapret TPWS engine active." >> "$LOGFILE"
         return 0
     fi
@@ -987,19 +1036,17 @@ WATCHDOG_EOF
         --property=RestartSec=5 \
         "$WATCHDOG_SCRIPT" 2>/dev/null || true
 
-    sleep 0.4
-    local NFQWS_PID=$(systemctl show -p MainPID --value zapret-nfqws 2>/dev/null || true)
-    if [ -n "$NFQWS_PID" ] && [ "$NFQWS_PID" != "0" ]; then
-        echo "$NFQWS_PID" > "$PIDFILE"
-    elif [ ! -s "$PIDFILE" ]; then
-        pgrep -x nfqws | head -n1 > "$PIDFILE" 2>/dev/null || true
+    if ! wait_for_process_start "zapret-nfqws" "$PIDFILE" 5; then
+        rollback_startup "$IFACE"
+        return 1
     fi
 
+    : > "$STATE_DIR/nft-active"
     apply_dns "$IFACE" "$DNS_PROVIDER"
     apply_ai_hosts "$ENABLE_AI_HOSTS"
 
-    echo "Zapret engine started successfully with PID: $(cat "$PIDFILE" 2>/dev/null || pgrep -f "$BIN" | head -n1)"
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Zapret engine active with PID: $(cat "$PIDFILE" 2>/dev/null || pgrep -f "$BIN" | head -n1)" >> "$LOGFILE"
+    echo "Zapret engine started successfully with PID: $(cat "$PIDFILE" 2>/dev/null || true)"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Zapret engine active with PID: $(cat "$PIDFILE" 2>/dev/null || true)" >> "$LOGFILE"
 }
 
 run_blockcheck2() {
