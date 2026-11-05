@@ -107,6 +107,33 @@ check_root() {
     fi
 }
 
+validate_exec_target() {
+    local target="$1"
+    if [ "$EUID" -ne 0 ]; then
+        return 0
+    fi
+
+    local REAL_PATH
+    REAL_PATH=$(readlink -f "$target" 2>/dev/null || echo "$target")
+    local REAL_DIR
+    REAL_DIR=$(dirname "$REAL_PATH")
+
+    if [[ "$REAL_PATH" =~ ^(/usr/|/opt/) ]]; then
+        local OWNER_UID
+        OWNER_UID=$(stat -c '%u' "$REAL_PATH" 2>/dev/null || echo "1000")
+        if [ "$OWNER_UID" -ne 0 ]; then
+            echo "SECURITY ERROR: System-wide file $REAL_PATH is not owned by root (UID: $OWNER_UID). Aborting." >&2
+            exit 1
+        fi
+        if [ -w "$REAL_DIR" ] && [ "$OWNER_UID" -ne 0 ]; then
+            echo "SECURITY ERROR: System directory $REAL_DIR is writable by non-root. Aborting." >&2
+            exit 1
+        fi
+    else
+        echo "WARNING: Portable Mode: executing $REAL_PATH from user directory. For full isolation install to /usr/libexec/zapret-gui" >&2
+    fi
+}
+
 get_active_iface() {
     local iface="$1"
     if [ "$iface" = "any" ] || [ -z "$iface" ]; then
@@ -501,6 +528,7 @@ start_nfqws2_engine() {
 
     systemctl stop zapret2-nfqws 2>/dev/null || true
     systemctl reset-failed zapret2-nfqws 2>/dev/null || true
+    validate_exec_target "$DIR/zapret2_core.py"
     if ! systemd-run --unit=zapret2-nfqws \
         --description="Zapret2 nfqws2 Lua DPI Engine" \
         --property=Restart=always \
@@ -563,6 +591,7 @@ start_engine() {
         if [ "$ENABLE_AUTO_HOSTLIST" = "1" ] || grep -q '"enable_auto_hostlist": true' "$USER_CFG" 2>/dev/null || grep -q '"enable_auto_hostlist": true' "$HOME/.config/zapret-gui/config.json" 2>/dev/null; then
             AUTO_HL_OPT="--enable-auto-hostlist"
         fi
+        validate_exec_target "$DIR/zapret2_core.py"
         python3 "$DIR/zapret2_core.py" prepare \
             --preset "$Z2_PRESET" --output "$NFQWS2_RUNTIME" --iface "$ACTIVE_IFACE" $AUTO_HL_OPT || return 1
     fi

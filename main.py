@@ -44,6 +44,17 @@ CONFIG_FILE = os.path.expanduser("~/.config/zapret-gui/config.json")
 AUTOSTART_FILE = os.path.expanduser("~/.config/autostart/zapret-gui.desktop")
 
 
+def check_installation_security() -> bool:
+    """Verifies directory security in system-wide installations."""
+    real_app_dir = os.path.realpath(APP_DIR)
+    is_system = real_app_dir.startswith(("/usr/libexec/zapret-gui", "/usr/share/zapret-gui", "/usr/lib/zapret-gui", "/opt/zapret-gui"))
+    if is_system and os.getuid() != 0:
+        if os.access(real_app_dir, os.W_OK):
+            print("SECURITY ERROR: System-wide directory is writable by unprivileged user! Aborting.", file=sys.stderr)
+            sys.exit(1)
+    return is_system
+
+
 def get_network_interfaces():
     """Scans /sys/class/net/ excluding lo, returns list starting with any."""
     ifaces = ["any"]
@@ -548,6 +559,7 @@ DNS_SERVERS = {
 class Zapret2App(Gtk.Window):
     def __init__(self, minimized=False):
         super().__init__(title=APP_TITLE)
+        self.is_system_mode = check_installation_security()
         self.set_default_size(1080, 720)
         self.set_position(Gtk.WindowPosition.CENTER)
         self.set_icon_name("network-vpn")
@@ -2445,6 +2457,8 @@ class Zapret2App(Gtk.Window):
         about_card.get_style_context().add_class("fluent-card")
         about_card.pack_start(Gtk.Label(label="<b>О программе</b>", use_markup=True, xalign=0), False, False, 0)
         about_card.pack_start(Gtk.Label(label=APP_DESCRIPTION, xalign=0), False, False, 0)
+        mode_text = "🛡️ Системный режим (/usr)" if getattr(self, "is_system_mode", False) else "📦 Портативный режим (запуск из каталога пользователя)"
+        about_card.pack_start(Gtk.Label(label=f"Режим установки: {mode_text}", xalign=0), False, False, 0)
         about_card.pack_start(Gtk.Label(label="Ядра: nfqws2 + Lua, nfqws / tpws v72.13; брандмауэр: nftables", xalign=0), False, False, 0)
         about_card.pack_start(Gtk.Label(label="Синхронизация списков: Forgejo git2.zapret.moe (Zapret 2 Community)", xalign=0), False, False, 0)
         vbox.pack_start(about_card, False, False, 0)

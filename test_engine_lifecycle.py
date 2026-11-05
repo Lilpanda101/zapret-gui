@@ -65,4 +65,18 @@ def test_main_restores_dns_after_blockcheck_when_engine_was_stopped():
     assert 'run_engine("dns", self.active_iface, "system")' in content
 
 
+def test_validate_exec_target_security_in_engine_sh():
+    content = ENGINE_SH_PATH.read_text(encoding="utf-8")
+    assert "validate_exec_target()" in content
+    assert 'validate_exec_target "$DIR/zapret2_core.py"' in content
+
+
+def test_check_installation_security_logic():
+    import main
+    # Running from project folder -> portable mode
+    is_sys = main.check_installation_security()
+    assert is_sys is False
+
+
+
 
