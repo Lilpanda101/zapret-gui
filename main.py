@@ -91,6 +91,44 @@ def run_engine(*args):
     return subprocess.run(["pkexec"] + cmd, capture_output=True, text=True)
 
 
+def safe_idle(func, *args, **kwargs):
+    """
+    Schedules func(*args, **kwargs) on the GLib main loop.
+    Returns False from the idle callback so it is never re-scheduled.
+    """
+    def _cb():
+        try:
+            func(*args, **kwargs)
+        except Exception as exc:
+            print("Error in idle callback:", exc)
+        return False
+    GLib.idle_add(_cb)
+
+
+def run_engine_async(args, on_success=None, on_error=None):
+    """
+    Executes engine.sh asynchronously in a background thread.
+    Dispatches on_success(stdout) or on_error(stderr_or_output) via safe_idle.
+    """
+    def worker():
+        try:
+            res = run_engine(*args)
+            out = (res.stdout or "").strip()
+            err = (res.stderr or "").strip()
+            if res.returncode == 0:
+                if on_success:
+                    safe_idle(on_success, out)
+            else:
+                msg = err if err else (out if out else f"Код ошибки: {res.returncode}")
+                if on_error:
+                    safe_idle(on_error, msg)
+        except Exception as exc:
+            if on_error:
+                safe_idle(on_error, str(exc))
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
 # Modern Windows 11 Fluent Design Dark Theme CSS
 FLUENT_CSS = b"""
 * {
@@ -1413,8 +1451,13 @@ class Zapret2App(Gtk.Window):
             self.active_iface = "any"
 
     def apply_network_tune(self):
-        run_engine("tune")
-        self.show_dialog("Успех", "Оптимизации TCP BBR, FQ qdisc и conntrack успешно применены к ядру Linux!")
+        def on_ok(out):
+            self.show_dialog("Успех", "Оптимизации TCP BBR, FQ qdisc и conntrack успешно применены к ядру Linux!")
+
+        def on_fail(err):
+            self.show_dialog("Ошибка", f"Не удалось применить сетевые настройки ядра:\n{err}")
+
+        run_engine_async(["tune"], on_success=on_ok, on_error=on_fail)
 
     # ================= PAGE 5: NETWORK MONITOR =================
     def create_monitor_page(self):
@@ -1815,12 +1858,22 @@ class Zapret2App(Gtk.Window):
         threading.Thread(target=worker, daemon=True).start()
 
     def apply_hosts_now(self):
-        run_engine("hosts", "1")
-        self.show_dialog("Успех", "База Smart Proxy успешно применена в /etc/hosts!")
+        def on_ok(out):
+            self.show_dialog("Успех", "База Smart Proxy успешно применена в /etc/hosts!")
+
+        def on_fail(err):
+            self.show_dialog("Ошибка", f"Не удалось применить hosts:\n{err}")
+
+        run_engine_async(["hosts", "1"], on_success=on_ok, on_error=on_fail)
 
     def clean_hosts_now(self):
-        run_engine("clean_hosts")
-        self.show_dialog("Очистка", "Записи Zapret успешно удалены из /etc/hosts.")
+        def on_ok(out):
+            self.show_dialog("Очистка", "Записи Zapret успешно удалены из /etc/hosts.")
+
+        def on_fail(err):
+            self.show_dialog("Ошибка", f"Не удалось очистить /etc/hosts:\n{err}")
+
+        run_engine_async(["clean_hosts"], on_success=on_ok, on_error=on_fail)
 
     # ================= PAGE 8: UPDATES & SYNC =================
     def create_updates_page(self):
@@ -1967,28 +2020,35 @@ class Zapret2App(Gtk.Window):
         def worker():
             try:
                 meta = self.updater.sync_bases_and_fakes(
-                    progress_callback=lambda msg, percent=None: GLib.idle_add(append_log, msg, percent)
+                    progress_callback=lambda msg, percent=None: safe_idle(append_log, msg, percent)
                 )
-                GLib.idle_add(append_log, "Синхронизация /etc/zapret/ с правами root...")
-                run_engine("sync")
+                safe_idle(append_log, "Синхронизация /etc/zapret/ с правами root...")
+                sync_res = run_engine("sync")
+                if sync_res.returncode != 0:
+                    err_msg = (sync_res.stderr or sync_res.stdout).strip()
+                    raise RuntimeError(f"Синхронизация с root завершилась с ошибкой: {err_msg}")
 
                 if self.is_running:
-                    GLib.idle_add(append_log, "Перезапуск активного десинхронизатора...")
-                    run_engine(*self.engine_command("restart"))
+                    safe_idle(append_log, "Перезапуск активного десинхронизатора...")
+                    cmd = self.engine_command("restart")
+                    restart_res = run_engine(*cmd)
+                    if restart_res.returncode != 0:
+                        err_msg = (restart_res.stderr or restart_res.stdout).strip()
+                        raise RuntimeError(f"Перезапуск десинхронизатора завершился с ошибкой: {err_msg}")
 
-                GLib.idle_add(append_log, "✅ Базы и бинарные fakes успешно обновлены!")
-                GLib.idle_add(self.progress_upd.set_fraction, 1.0)
-                GLib.idle_add(self.progress_upd.set_text, "Готово 100%")
-                GLib.idle_add(self.lbl_upd_ver.set_text, f"Версия баз: v{meta['version']}")
-                GLib.idle_add(self.lbl_upd_time.set_text, f"Последняя синхронизация: {meta['last_sync']}")
-                GLib.idle_add(self.lbl_upd_counts.set_text, f"Fakes: {meta['fakes_count']}  •  Списки: {meta['lists_count']}  •  Пресеты: {meta.get('presets_count', 136)}  •  Lua: {meta.get('lua_count', 19)}")
+                safe_idle(append_log, "✅ Базы и бинарные fakes успешно обновлены!")
+                safe_idle(self.progress_upd.set_fraction, 1.0)
+                safe_idle(self.progress_upd.set_text, "Готово 100%")
+                safe_idle(self.lbl_upd_ver.set_text, f"Версия баз: v{meta['version']}")
+                safe_idle(self.lbl_upd_time.set_text, f"Последняя синхронизация: {meta['last_sync']}")
+                safe_idle(self.lbl_upd_counts.set_text, f"Fakes: {meta['fakes_count']}  •  Списки: {meta['lists_count']}  •  Пресеты: {meta.get('presets_count', 136)}  •  Lua: {meta.get('lua_count', 19)}")
                 if hasattr(self, "top_tile_ver"):
-                    GLib.idle_add(self.top_tile_ver.set_text, f"v{meta['version']}")
+                    safe_idle(self.top_tile_ver.set_text, f"v{meta['version']}")
             except Exception as e:
-                GLib.idle_add(append_log, f"❌ Ошибка синхронизации: {e}")
+                safe_idle(append_log, f"❌ Ошибка синхронизации: {e}")
             finally:
-                GLib.idle_add(lambda: self.btn_sync_now.set_sensitive(True))
-                GLib.idle_add(lambda: self.btn_check_upd.set_sensitive(True))
+                safe_idle(lambda: self.btn_sync_now.set_sensitive(True))
+                safe_idle(lambda: self.btn_check_upd.set_sensitive(True))
 
         threading.Thread(target=worker, daemon=True).start()
 
