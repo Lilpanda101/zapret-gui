@@ -1,0 +1,29 @@
+from pathlib import Path
+import re
+import pytest
+
+ENGINE_SH_PATH = Path(__file__).parent / "engine.sh"
+
+
+def test_no_blind_pkill_in_engine_sh():
+    content = ENGINE_SH_PATH.read_text(encoding="utf-8")
+    # pkill -9 -x nfqws/tpws must NEVER exist (kills other users/system processes)
+    assert not re.search(r"pkill\s+-[0-9]+\s+-x\s+(?:nfqws|nfqws2|tpws)", content), (
+        "Found blind 'pkill -x' in engine.sh! It must stop only its own units or verify /proc/<pid>/exe."
+    )
+
+
+def test_state_dir_and_lock_in_run():
+    content = ENGINE_SH_PATH.read_text(encoding="utf-8")
+    assert 'STATE_DIR="/run/zapret-gui"' in content
+    assert 'PIDFILE="$STATE_DIR/zapret-gui.pid"' in content
+    assert 'LOGFILE="$STATE_DIR/zapret-gui.log"' in content
+    assert 'LOCKFILE="$STATE_DIR/engine.lock"' in content
+    assert 'WATCHDOG_SCRIPT="$STATE_DIR/zapret-watchdog.sh"' in content
+    assert "flock -w 10 200" in content
+
+
+def test_watchdog_not_in_tmp():
+    content = ENGINE_SH_PATH.read_text(encoding="utf-8")
+    assert "/tmp/zapret-watchdog.sh" not in content
+    assert "/tmp/zapret-gui.pid" not in content

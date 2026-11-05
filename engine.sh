@@ -4,8 +4,11 @@ set -e
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN="$DIR/bin/nfqws"
 FAKE="$DIR/fake"
-PIDFILE="/tmp/zapret-gui.pid"
-LOGFILE="/tmp/zapret-gui.log"
+STATE_DIR="/run/zapret-gui"
+PIDFILE="$STATE_DIR/zapret-gui.pid"
+LOGFILE="$STATE_DIR/zapret-gui.log"
+LOCKFILE="$STATE_DIR/engine.lock"
+WATCHDOG_SCRIPT="$STATE_DIR/zapret-watchdog.sh"
 NFT_TABLE="zapret_gui"
 EXCLUDE_FILE="$DIR/exclude.txt"
 BADSUM_FILE="$DIR/badsum_hosts.txt"
@@ -16,6 +19,32 @@ SYS_EFFECTIVE_LIST="/etc/zapret/list-general.effective.txt"
 QNUM=200
 NFQWS2_RUNTIME="/etc/zapret/zapret2-runtime"
 NFQWS2_STATE_DIR="/run/zapret-gui"
+
+# Ensure /run exists and initialize state directory with 0700 root:root
+init_state_dir() {
+    if [ ! -d "/run" ]; then
+        echo "ERROR: /run directory is not available. Non-systemd or broken environment detected." >&2
+        exit 1
+    fi
+    if [ "$EUID" -eq 0 ]; then
+        if [ ! -d "$STATE_DIR" ]; then
+            mkdir -p "$STATE_DIR"
+            chmod 0700 "$STATE_DIR"
+            chown root:root "$STATE_DIR" 2>/dev/null || true
+        fi
+    fi
+}
+
+acquire_lock() {
+    init_state_dir
+    if [ "$EUID" -eq 0 ]; then
+        exec 200>"$LOCKFILE"
+        if ! flock -w 10 200; then
+            echo "ERROR: Engine lock ($LOCKFILE) is busy. Another operation is in progress." >&2
+            exit 1
+        fi
+    fi
+}
 
 # Function to check root
 check_root() {
@@ -257,6 +286,7 @@ clean_ai_hosts() {
 
 stop_engine() {
     local iface="$1"
+    acquire_lock
     echo "Stopping Zapret engine..."
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Stopping Zapret engine..." >> "$LOGFILE" 2>/dev/null || true
 
@@ -267,28 +297,30 @@ stop_engine() {
     systemctl reset-failed zapret2-nfqws 2>/dev/null || true
     systemctl stop zapret-tpws 2>/dev/null || true
     systemctl reset-failed zapret-tpws 2>/dev/null || true
-    rm -f /tmp/zapret-watchdog.sh
+    rm -f "$WATCHDOG_SCRIPT"
 
     if [ -f "$PIDFILE" ]; then
+        local PID
         PID=$(cat "$PIDFILE" 2>/dev/null || true)
         if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
-            kill "$PID" 2>/dev/null || true
-            sleep 0.2
-            kill -9 "$PID" 2>/dev/null || true
+            local EXE
+            EXE=$(readlink -f "/proc/$PID/exe" 2>/dev/null || true)
+            # Only terminate our own expected binaries
+            if [ -n "$EXE" ] && [[ "$EXE" =~ (nfqws|tpws|python) ]]; then
+                kill -15 "$PID" 2>/dev/null || true
+                for _ in {1..20}; do
+                    kill -0 "$PID" 2>/dev/null || break
+                    sleep 0.1
+                done
+                kill -9 "$PID" 2>/dev/null || true
+            fi
         fi
         rm -f "$PIDFILE"
     fi
 
-    # Kill any remaining nfqws, nfqws2 and tpws instances
-    pkill -9 -x nfqws 2>/dev/null || true
-    pkill -9 -x nfqws2 2>/dev/null || true
-    pkill -9 -x tpws 2>/dev/null || true
-    pkill -9 -f "$BIN" 2>/dev/null || true
-    pkill -9 -f "$DIR/bin/tpws" 2>/dev/null || true
-
     # Remove nftables mangle table cleanly
     nft delete table inet "$NFT_TABLE" 2>/dev/null || true
-    rm -f "$NFQWS2_STATE_DIR/nft-active"
+    rm -f "$STATE_DIR/nft-active"
 
     revert_dns "$iface"
     clean_ai_hosts
@@ -398,6 +430,7 @@ start_nfqws2_engine() {
 }
 
 start_engine() {
+    acquire_lock
     local PRESET="${1:-general}"
     local IFACE="${2:-any}"
     local DNS_PROVIDER="${3:-cloudflare}"
@@ -889,31 +922,31 @@ start_engine() {
     systemctl reset-failed zapret-nfqws 2>/dev/null || true
 
     # Create watchdog script for health monitoring
-    cat > /tmp/zapret-watchdog.sh << 'WATCHDOG_EOF'
+    cat > "$WATCHDOG_SCRIPT" << WATCHDOG_EOF
 #!/bin/bash
 # Zapret nfqws watchdog - checks health and restarts if needed
-PIDFILE="/tmp/zapret-gui.pid"
-LOGFILE="/tmp/zapret-gui.log"
-NFT_TABLE="zapret_gui"
+PIDFILE="$PIDFILE"
+LOGFILE="$LOGFILE"
+NFT_TABLE="$NFT_TABLE"
 
 check_health() {
     # Check if nfqws process is alive
-    if [ -f "$PIDFILE" ]; then
-        local pid=$(cat "$PIDFILE" 2>/dev/null)
-        if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] WATCHDOG: nfqws process $pid is dead" >> "$LOGFILE"
+    if [ -f "\$PIDFILE" ]; then
+        local pid=\$(cat "\$PIDFILE" 2>/dev/null)
+        if [ -n "\$pid" ] && ! kill -0 "\$pid" 2>/dev/null; then
+            echo "[\$(date '+%Y-%m-%d %H:%M:%S')] WATCHDOG: nfqws process \$pid is dead" >> "\$LOGFILE"
             return 1
         fi
     else
         if ! pgrep -x nfqws >/dev/null; then
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] WATCHDOG: nfqws not found in process list" >> "$LOGFILE"
+            echo "[\$(date '+%Y-%m-%d %H:%M:%S')] WATCHDOG: nfqws not found in process list" >> "\$LOGFILE"
             return 1
         fi
     fi
 
     # Check if nftables rules exist
-    if ! nft list table inet "$NFT_TABLE" >/dev/null 2>&1; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] WATCHDOG: nftables table $NFT_TABLE missing" >> "$LOGFILE"
+    if ! nft list table inet "\$NFT_TABLE" >/dev/null 2>&1; then
+        echo "[\$(date '+%Y-%m-%d %H:%M:%S')] WATCHDOG: nftables table \$NFT_TABLE missing" >> "\$LOGFILE"
         return 1
     fi
 
@@ -923,13 +956,13 @@ check_health() {
 # Main watchdog loop
 while true; do
     if ! check_health; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] WATCHDOG: Health check failed, triggering restart..." >> "$LOGFILE"
+        echo "[\$(date '+%Y-%m-%d %H:%M:%S')] WATCHDOG: Health check failed, triggering restart..." >> "\$LOGFILE"
         systemctl restart zapret-nfqws 2>/dev/null || true
     fi
     sleep 10
 done
 WATCHDOG_EOF
-    chmod +x /tmp/zapret-watchdog.sh
+    chmod 0755 "$WATCHDOG_SCRIPT"
 
     # Stop old watchdog if exists
     systemctl stop zapret-watchdog 2>/dev/null || true
@@ -952,7 +985,7 @@ WATCHDOG_EOF
         --description="Zapret Health Watchdog" \
         --property=Restart=always \
         --property=RestartSec=5 \
-        /tmp/zapret-watchdog.sh 2>/dev/null || true
+        "$WATCHDOG_SCRIPT" 2>/dev/null || true
 
     sleep 0.4
     local NFQWS_PID=$(systemctl show -p MainPID --value zapret-nfqws 2>/dev/null || true)
@@ -991,6 +1024,7 @@ run_blockcheck2() {
 }
 
 sync_bases() {
+    acquire_lock
     echo "Syncing updated lists and fakes to /etc/zapret/..."
     mkdir -p /etc/zapret
     if [ -d "$DIR/fake" ]; then

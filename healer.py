@@ -16,7 +16,7 @@ import urllib.error
 from datetime import datetime
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
-HEALER_LOG = "/tmp/zapret-healer.log"
+HEALER_LOG = "/run/zapret-gui/zapret-healer.log" if (os.path.isdir("/run/zapret-gui") and os.access("/run/zapret-gui", os.W_OK)) else "/tmp/zapret-healer.log"
 HEALER_STATE = os.path.expanduser("~/.config/zapret-gui/healer_state.json")
 CONFIG_FILE = os.path.expanduser("~/.config/zapret-gui/config.json")
 

@@ -39,7 +39,7 @@ except Exception:
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 ENGINE_SH = os.path.join(APP_DIR, "engine.sh")
-LOG_FILE = "/tmp/zapret-gui.log"
+LOG_FILE = "/run/zapret-gui/zapret-gui.log" if os.path.exists("/run/zapret-gui/zapret-gui.log") or os.path.isdir("/run/zapret-gui") else "/tmp/zapret-gui.log"
 CONFIG_FILE = os.path.expanduser("~/.config/zapret-gui/config.json")
 AUTOSTART_FILE = os.path.expanduser("~/.config/autostart/zapret-gui.desktop")
 
