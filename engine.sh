@@ -743,7 +743,6 @@ start_engine() {
     fi
 
     mkdir -p "$NFQWS2_STATE_DIR"
-    : > "$NFQWS2_STATE_DIR/nft-active"
     echo "Firewall rules applied."
     echo "Starting nfqws with preset: $PRESET..."
 
