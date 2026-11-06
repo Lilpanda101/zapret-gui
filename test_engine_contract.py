@@ -49,14 +49,18 @@ def test_engine_params_to_argv_exact_defaults():
 def test_engine_params_clamps_and_sanitizes_conntrack():
     from engine_params import EngineParams
 
-    # Accidental 1 million limit from sysctl nf_conntrack_max
+    # Accidental 1 million limit from sysctl nf_conntrack_max is clamped to 128
     params = EngineParams.from_dict({"conntrack_limit": 1048576})
-    assert params.conntrack_limit == 12
-    assert params.to_argv("start")[7] == "12"
+    assert params.conntrack_limit == 128
+    assert params.to_argv("start")[7] == "128"
 
-    # Negative / string invalid
+    # Negative is clamped to 1
     params2 = EngineParams.from_dict({"conntrack_limit": -5})
-    assert params2.conntrack_limit == 12
+    assert params2.conntrack_limit == 1
+
+    # Non-numeric string defaults to 12
+    params3 = EngineParams.from_dict({"conntrack_limit": "not_a_number"})
+    assert params3.conntrack_limit == 12
 
     # Valid in-range value
     params3 = EngineParams.from_dict({"conntrack_limit": 20})
