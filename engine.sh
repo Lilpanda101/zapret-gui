@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN="$DIR/bin/nfqws"
@@ -70,7 +69,7 @@ wait_for_process_start() {
     if [ -z "$expected_pattern" ]; then
         case "$unit" in
             *tpws*) expected_pattern="tpws" ;;
-            *nfqws2*|*zapret2*) expected_pattern="nfqws2|nfqws" ;;
+            *nfqws2*|*zapret2*) expected_pattern="zapret2_core|nfqws2|nfqws" ;;
             *nfqws*) expected_pattern="nfqws" ;;
             *) expected_pattern=".*" ;;
         esac
@@ -86,7 +85,12 @@ wait_for_process_start() {
                 fexe=$(readlink -f "/proc/$fpid/exe" 2>/dev/null || true)
                 local fcomm
                 fcomm=$(cat "/proc/$fpid/comm" 2>/dev/null || true)
-                if [ -z "$fexe" ] || [[ "$fexe" =~ ($expected_pattern) ]] || [[ "$fcomm" =~ ($expected_pattern) ]]; then
+                local fcmd
+                fcmd=$(tr '\0' ' ' < "/proc/$fpid/cmdline" 2>/dev/null || true)
+                if [ -z "$fexe" ] \
+                   || [[ "$fexe" =~ ($expected_pattern) ]] \
+                   || [[ "$fcomm" =~ ($expected_pattern) ]] \
+                   || [[ "$fcmd"  =~ ($expected_pattern) ]]; then
                     return 0
                 fi
             fi
@@ -570,7 +574,7 @@ start_nfqws2_engine() {
         echo $! > "$PIDFILE"
     fi
 
-    if ! wait_for_process_start "zapret2-nfqws" "$PIDFILE" 5; then
+    if ! wait_for_process_start "zapret2-nfqws" "$PIDFILE" 5 "zapret2_core|nfqws2|nfqws"; then
         rollback_startup "$IFACE"
         return 1
     fi
@@ -676,7 +680,7 @@ start_engine() {
             echo $! > "$PIDFILE"
         fi
 
-        if ! wait_for_process_start "zapret-tpws" "$PIDFILE" 5; then
+        if ! wait_for_process_start "zapret-tpws" "$PIDFILE" 5 "tpws"; then
             rollback_startup "$IFACE"
             return 1
         fi
@@ -1137,7 +1141,7 @@ WATCHDOG_EOF
         --property=RestartSec=5 \
         "$WATCHDOG_SCRIPT" 2>/dev/null || true
 
-    if ! wait_for_process_start "zapret-nfqws" "$PIDFILE" 5; then
+    if ! wait_for_process_start "zapret-nfqws" "$PIDFILE" 5 "nfqws"; then
         rollback_startup "$IFACE"
         return 1
     fi
@@ -1244,6 +1248,9 @@ install_polkit() {
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    set -euo pipefail
+    trap release_lock EXIT INT TERM
+
     if [ "$1" != "status" ]; then
         check_root
     fi

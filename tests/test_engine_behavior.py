@@ -148,3 +148,80 @@ def test_legacy_path_does_not_create_nft_active_marker_prematurely(tmp_path):
     )
 
     assert not marker.exists(), f"Premature nft-active marker was created at {marker} before process was verified alive!"
+
+import sys
+
+def test_wait_for_process_start_nfqws2_python_fallback_without_hint(tmp_path):
+    """
+    Simulates production nfqws2 fallback:
+    nohup /usr/bin/python3 "$DIR/zapret2_core.py" run --runtime "$NFQWS2_RUNTIME" &
+    The call in engine.sh is 3-argument without hint:
+    wait_for_process_start "zapret2-nfqws" "$PIDFILE" 2
+    MUST succeed by matching zapret2_core in /proc/<pid>/cmdline!
+    """
+    fake_script = tmp_path / "zapret2_core.py"
+    fake_script.write_text("import time; time.sleep(5)\n", encoding="utf-8")
+
+    proc = subprocess.Popen([sys.executable, str(fake_script), "run", "--runtime", "/tmp/rt"])
+    pid_file = tmp_path / "zapret2.pid"
+    pid_file.write_text(str(proc.pid), encoding="utf-8")
+
+    try:
+        bash_cmd = (
+            f"source '{ENGINE_SH}' && "
+            f"wait_for_process_start 'zapret2-nfqws' '{pid_file}' 2"
+        )
+        res = subprocess.run(["bash", "-c", bash_cmd], capture_output=True, text=True)
+        assert res.returncode == 0, f"Failed to recognize nfqws2 python process:\n{res.stderr}\n{res.stdout}"
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+def test_wait_for_process_start_tpws_fallback_without_hint(tmp_path):
+    fake_script = tmp_path / "tpws"
+    fake_script.write_text("#!/bin/sh\nsleep 5\n", encoding="utf-8")
+    fake_script.chmod(0o755)
+
+    proc = subprocess.Popen([str(fake_script)])
+    pid_file = tmp_path / "tpws.pid"
+    pid_file.write_text(str(proc.pid), encoding="utf-8")
+
+    try:
+        bash_cmd = (
+            f"source '{ENGINE_SH}' && "
+            f"wait_for_process_start 'zapret-tpws' '{pid_file}' 2"
+        )
+        res = subprocess.run(["bash", "-c", bash_cmd], capture_output=True, text=True)
+        assert res.returncode == 0, f"Failed to recognize tpws process:\n{res.stderr}\n{res.stdout}"
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+def test_wait_for_process_start_nfqws1_fallback_without_hint(tmp_path):
+    fake_script = tmp_path / "nfqws"
+    fake_script.write_text("#!/bin/sh\nsleep 5\n", encoding="utf-8")
+    fake_script.chmod(0o755)
+
+    proc = subprocess.Popen([str(fake_script)])
+    pid_file = tmp_path / "nfqws.pid"
+    pid_file.write_text(str(proc.pid), encoding="utf-8")
+
+    try:
+        bash_cmd = (
+            f"source '{ENGINE_SH}' && "
+            f"wait_for_process_start 'zapret-nfqws' '{pid_file}' 2"
+        )
+        res = subprocess.run(["bash", "-c", bash_cmd], capture_output=True, text=True)
+        assert res.returncode == 0, f"Failed to recognize nfqws process:\n{res.stderr}\n{res.stdout}"
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            proc.kill()
