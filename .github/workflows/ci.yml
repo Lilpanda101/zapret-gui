@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi gir1.2-gtk-3.0 gir1.2-gtksource-4 xvfb shellcheck
+      - name: Install Python dependencies
+        run: pip install pytest ruff
+      - name: Ruff (critical errors only, legacy code)
+        run: ruff check .
+      - name: ShellCheck
+        run: shellcheck engine.sh
+      - name: Bash syntax
+        run: bash -n engine.sh
+      - name: Python compile
+        run: python3 -m py_compile main.py updater.py healer.py zapret2_core.py zapret2_ui.py version.py config_manager.py tray_manager.py persistent_bar.py onboarding.py theme_manager.py window_state.py
+      - name: Tests under Xvfb
+        run: xvfb-run -a python3 -m pytest -q

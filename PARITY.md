@@ -15,7 +15,7 @@
 | **1.5**| **Hardening & Behavioral Fixes (5 коммитов)** | 🟢 Готово | `9016199..3015bff` | Устранение регрессий: non-systemd PID fallback, идемпотентный flock, удаление раннего маркера nft-active, строгий EngineParams, поведенческие тесты |
 | **2** | **Паритет данных и моделей (5 коммитов)** | 🟢 Готово | `7e9e6c0..60d29c2` | Золотой снапшот 136 ID, PresetCatalog (63 сем. · 136 версий), динамический UI, SSOT пресетов (healer/main), --skip профилей, GtkSource редактор |
 | **3** | **Паритет UI/UX** | 🟢 Готово | `1d8faae..2ea45d7` | Persistent status bar, TrayManager (Ayatana → AppIndicator → StatusIcon → none), онбординг, тема dark/light/system, геометрия окна и последняя страница, a11y, headless Xvfb: 72 passed |
-| **9** | **Тесты и CI (для сделанного)** | ⚪ В очереди | — | Пирамида тестов, AST-стражи, GitHub Actions / Forgejo CI |
+| **9** | **Тесты и CI (для сделанного)** | 🟢 Готово | см. коммит Этапа 9 | 190 тестов: корневые + tests/, 6 статических стражей в tests/test_guards.py (версия — один источник, потоки не создают виджеты, create_* не вызывают subprocess, engine.sh без pkill -9 и /tmp), GitHub Actions CI: ruff, shellcheck, py_compile, bash -n, pytest под Xvfb; remote пока не настроен, бейдж в README добавится после первого пуша |
 | **4** | **Оркестратор (автоподбор стратегий)** | ⚪ В очереди | — | Пакетный перебор 136 пресетов, скоринг, NetworkManager D-Bus |
 | **5** | **Диагностика и классификация** | ⚪ В очереди | — | Chrome-отпечаток (curl_cffi), классификация ТСПУ, QUIC-тест |
 | **6** | **DNS, hosts и управление списками** | ⚪ В очереди | — | DoH/DoT провайдеры, карточки хостов сервисов, семантика `!домен` |
