@@ -178,3 +178,4 @@
 - **Этап 10 (Упаковка и дистрибуция):**
   - Подготовлен `packaging/PKGBUILD` для Arch Linux / AUR, валидированный FreeDesktop `packaging/zapret-gui.desktop`, системный `packaging/zapret-gui.service`.
   - Разработаны скрипты `install.sh` и `uninstall.sh` с поддержкой системного и портативного режимов без root-прав. Все тесты валидации упаковки пройдены.
+  - Тестовое покрытие проекта достигло **389 тестов (100% pass)**.
