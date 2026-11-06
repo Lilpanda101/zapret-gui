@@ -219,8 +219,10 @@ def test_absence_of_network_and_root(tmp_path, fake_app):
         assert widget._worker_thread is not None
         widget._worker_thread.join(timeout=3.0)
 
-        while GLib.main_context_default().pending():
+        _flush_cnt = 0
+        while GLib.main_context_default().pending() and _flush_cnt < 100:
             GLib.main_context_default().iteration(False)
+            _flush_cnt += 1
 
         assert widget.is_running is False
         assert widget.latest_result is not None

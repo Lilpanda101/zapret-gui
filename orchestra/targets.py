@@ -53,7 +53,31 @@ def targets_from_domains(domains):
     return results
 
 
-def http_probe(target, timeout=3.5):
+def make_curl_cffi_probe(impersonate="chrome124"):
+    """Optional curl_cffi probe transport impersonating Chrome TLS fingerprint."""
+    try:
+        from curl_cffi import requests as curl_requests
+    except ImportError:
+        return None
+
+    def _probe(target, timeout=3.5):
+        t0 = time.time()
+        headers = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0'}
+        headers.update(target.headers or {})
+        try:
+            res = curl_requests.get(target.url, headers=headers, impersonate=impersonate, timeout=timeout)
+            dt = int((time.time() - t0) * 1000)
+            return ProbeResult(200 <= res.status_code < 400, dt, res.status_code, '')
+        except Exception as exc:
+            dt = int((time.time() - t0) * 1000)
+            return ProbeResult(False, dt, None, str(exc))
+
+    return _probe
+
+
+def http_probe(target, timeout=3.5, transport=None):
+    if transport is not None:
+        return transport(target, timeout=timeout)
     t0 = time.time()
     headers = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0'}
     headers.update(target.headers or {})

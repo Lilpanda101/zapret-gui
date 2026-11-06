@@ -389,8 +389,13 @@ def test_orchestra_widget_autotune_workflow(fake_environment):
     widget._worker_thread.join(timeout=5.0)
 
     # Flush GTK main loop idle handlers
-    while GLib.main_context_default().pending():
+    _flush_count = 0
+    while GLib.main_context_default().pending() and _flush_count < 100:
         GLib.main_context_default().iteration(False)
+        _flush_count += 1
+
+    if widget.network_monitor:
+        widget.network_monitor.stop_monitoring()
 
     assert widget.is_running is False
     assert widget.latest_result is not None
@@ -449,8 +454,13 @@ def test_orchestra_widget_network_change_alert():
 
     widget.on_network_changed(old_c, new_c)
 
-    while GLib.main_context_default().pending():
+    _flush_count = 0
+    while GLib.main_context_default().pending() and _flush_count < 100:
         GLib.main_context_default().iteration(False)
+        _flush_count += 1
+
+    if widget.network_monitor:
+        widget.network_monitor.stop_monitoring()
 
     assert widget.network_banner_box.get_visible() is True
     assert "Cafe" in widget.lbl_net_notice.get_text()

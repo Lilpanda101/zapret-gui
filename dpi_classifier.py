@@ -23,6 +23,8 @@ import socket
 import struct
 import time
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+import urllib.error
+import urllib.request
 
 
 class BlockType(str, Enum):
@@ -443,6 +445,115 @@ def generate_quic_initial_packet(
 # Результаты и отчеты
 # ---------------------------------------------------------------------------
 
+def get_block_verdict(block_type: Union[BlockType, str]) -> Dict[str, str]:
+    """Возвращает метаданные вердикта для UI (severity, CSS класс, бейдж, описание, рекомендация).
+
+    Severity mapping:
+    - PASS -> badge-ok
+    - WARNING (HTTP_BLOCKPAGE, QUIC_BLACKHOLE, TIMEOUT) -> badge-warn
+    - CRITICAL / ERROR (DNS_SPOOFING, TCP_RST_INJECTION, TLS_SNI_DROP, ERROR) -> badge-bad
+    """
+    val = block_type.value if isinstance(block_type, BlockType) else str(block_type)
+    val_upper = val.upper()
+
+    if val_upper in (BlockType.PASS.value, "OK"):
+        return {
+            "severity": "PASS",
+            "badge_class": "badge-ok",
+            "badge_text": "Блокировок нет (PASS)",
+            "description": "Цензура и фильтрация ТСПУ не обнаружены. Ресурс доступен напрямую.",
+            "recommendation": "Специальные правила обхода и desync не требуются.",
+        }
+    elif val_upper == BlockType.DNS_SPOOFING.value:
+        return {
+            "severity": "CRITICAL",
+            "badge_class": "badge-bad",
+            "badge_text": "DNS подмена (CRITICAL)",
+            "description": "DNS-ответ подменяется на некорректный IP (bogon) или страницу-заглушку провайдера.",
+            "recommendation": "Включите шифрованный DNS (DoH/DoT) в разделе «DNS и DoH» или настройте доверенный DNS-сервер.",
+        }
+    elif val_upper == BlockType.TCP_RST_INJECTION.value:
+        return {
+            "severity": "CRITICAL",
+            "badge_class": "badge-bad",
+            "badge_text": "TCP RST инжект (CRITICAL)",
+            "description": "ТСПУ отправляет фиктивные пакеты TCP RST для разрыва соединения при обнаружении SNI или HTTP-запроса.",
+            "recommendation": "Используйте пресеты с десинхронизацией TCP (--dpi-desync=fake,split2,disorder) для подавления инжектора.",
+        }
+    elif val_upper == BlockType.TLS_SNI_DROP.value:
+        return {
+            "severity": "CRITICAL",
+            "badge_class": "badge-bad",
+            "badge_text": "TLS SNI сброс (CRITICAL)",
+            "description": "ТСПУ отбрасывает (blackhole) пакеты ClientHello с данным SNI; таймаут ожидания ServerHello.",
+            "recommendation": "Примените фрагментацию TLS SNI (split2/multisplit) или маскировку заголовков в zapret2/winws.",
+        }
+    elif val_upper == BlockType.HTTP_BLOCKPAGE.value:
+        return {
+            "severity": "WARNING",
+            "badge_class": "badge-warn",
+            "badge_text": "HTTP заглушка (WARNING)",
+            "description": "Обнаружен HTTP редирект (301/302) или HTML-страница заглушки РКН / провайдера (451/реестр).",
+            "recommendation": "Используйте защищённое HTTPS подключение или активируйте HTTP desync на порту 80.",
+        }
+    elif val_upper in (BlockType.QUIC_BLACKHOLE.value, "UDP_DROP"):
+        return {
+            "severity": "WARNING",
+            "badge_class": "badge-warn",
+            "badge_text": "QUIC блокировка (WARNING)",
+            "description": "UDP рукопожатия протокола QUIC (HTTP/3) глушатся фильтрами ТСПУ.",
+            "recommendation": "Отключите QUIC/HTTP3 в браузере или используйте desync для UDP/443 в настройках zapret.",
+        }
+    elif val_upper == BlockType.TIMEOUT.value:
+        return {
+            "severity": "WARNING",
+            "badge_class": "badge-warn",
+            "badge_text": "Таймаут (WARNING)",
+            "description": "Превышено время ожидания ответа от сервера. Возможен null-route по IP или сетевой сбой.",
+            "recommendation": "Проверьте сетевой маршрут к серверу или используйте альтернативные DNS/IP адреса.",
+        }
+    elif val_upper in (BlockType.ERROR.value, "CRITICAL"):
+        return {
+            "severity": "ERROR",
+            "badge_class": "badge-bad",
+            "badge_text": "Ошибка (ERROR)",
+            "description": "Сбой при выполнении диагностики (ошибка DNS резолвинга или недоступность сети).",
+            "recommendation": "Проверьте правильность ввода домена и сетевое подключение.",
+        }
+    else:
+        return {
+            "severity": "WARNING",
+            "badge_class": "badge-warn",
+            "badge_text": f"{val} (WARNING)",
+            "description": f"Обнаружен статус проверки: {val}.",
+            "recommendation": "Проверьте доступность узла и параметры обхода.",
+        }
+
+
+def make_curl_cffi_transport(impersonate: str = "chrome124") -> Optional[Callable[..., Tuple[int, Dict[str, str], str]]]:
+    """Опциональный curl_cffi транспорт для реалистичного Chrome TLS fingerprint.
+
+    Если curl_cffi не установлен в системе, возвращает None (graceful fallback).
+    """
+    try:
+        from curl_cffi import requests as curl_requests
+    except ImportError:
+        return None
+
+    def _transport(
+        url: str,
+        headers: Optional[Dict[str, str]] = None,
+        timeout: float = 3.5,
+    ) -> Tuple[int, Dict[str, str], str]:
+        req_headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"}
+        if headers:
+            req_headers.update(headers)
+        res = curl_requests.get(url, headers=req_headers, impersonate=impersonate, timeout=timeout)
+        return res.status_code, dict(res.headers), res.text
+
+    return _transport
+
+
 @dataclass
 class ClassificationResult:
     """Результат классификации одного хоста/домена."""
@@ -457,6 +568,10 @@ class ClassificationResult:
     @property
     def is_blocked(self) -> bool:
         return self.block_type != BlockType.PASS
+
+    @property
+    def verdict(self) -> Dict[str, str]:
+        return get_block_verdict(self.block_type)
 
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
@@ -540,12 +655,14 @@ class DPIClassifier:
         dns_resolver: Optional[Callable[[str], List[str]]] = None,
         trusted_dns_resolver: Optional[Callable[[str], List[str]]] = None,
         socket_factory: Callable[..., Any] = socket.socket,
+        http_transport: Optional[Callable[..., Tuple[int, Dict[str, str], str]]] = None,
     ):
         self.timeout = timeout
         self.quic_timeout = quic_timeout
         self.dns_resolver = dns_resolver or self._default_dns_resolver
         self.trusted_dns_resolver = trusted_dns_resolver
         self.socket_factory = socket_factory
+        self.http_transport = http_transport
 
     @staticmethod
     def _default_dns_resolver(domain: str) -> List[str]:
@@ -695,6 +812,15 @@ class DPIClassifier:
 
     def check_http_blockpage(self, domain: str, ip: str, port: int = 80) -> Tuple[bool, str]:
         """Отправляет простой HTTP GET запрос и проверяет на заглушку РКН/провайдера."""
+        if self.http_transport is not None:
+            try:
+                status_code, headers, body = self.http_transport(f"http://{domain}:{port}/", timeout=self.timeout)
+                return detect_blockpage_content(status_code, headers, body)
+            except ConnectionResetError as exc:
+                return True, f"TCP RST during HTTP request: {exc}"
+            except Exception as exc:
+                return False, f"HTTP check failed via transport: {exc}"
+
         sock = self.socket_factory(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(self.timeout)
         try:
@@ -1049,7 +1175,8 @@ def classify_domains(
     timeout: float = 3.0,
     max_workers: int = 5,
     mode: str = "auto",
+    http_transport: Optional[Callable[..., Tuple[int, Dict[str, str], str]]] = None,
 ) -> DiagnosticReport:
     """Удобная функция быстрого запуска диагностики списка доменов."""
-    classifier = DPIClassifier(timeout=timeout)
+    classifier = DPIClassifier(timeout=timeout, http_transport=http_transport)
     return classifier.run_diagnostics(domains, max_workers=max_workers, mode=mode)

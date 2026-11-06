@@ -48,8 +48,8 @@
 | **Auto-Hostlist (сбор доменов)** | Встроенный перехват nfqws2 | `zapret2_core.py:get_auto_hostlist_domains` | 🟢 Есть | `zapret2_core.py`, `zapret2_ui.py` |
 | **Синхронизация и обновления** | Автообновление через GitHub/Forgejo | 4 зеркала (git2/git3/mos/flic), SHA256 | 🟢 Есть | `updater.py` |
 | **Health Check и автолечение** | Служба самовосстановления | Демон `healer.py` (реакция на NFQWS_ONLY, авторестарт) | 🟡 Частично | Доработка до строгого FSM в Этапе 4 |
-| **Реалистичные пробы (TLS fingerprint)** | Браузерные отпечатки | urllib (Python fingerprint) | 🟡 Частично | Миграция на `curl_cffi` (Chrome TLS) в Этапе 5 |
-| **Классификация блокировок ТСПУ** | Разбор причин (SNI, IP, заглушка) | Базовый HTTP-код/ошибка | 🟡 Частично | Модуль `diagnostics/classify.py` в Этапе 5 |
+| **Реалистичные пробы (TLS fingerprint)** | Браузерные отпечатки | Chrome TLS 1.3 ClientHello генератор и QUIC Initial в `dpi_classifier.py`, опциональный инъектируемый транспорт `curl_cffi` (Chrome TLS) в `orchestra/targets.py` и `dpi_classifier.py` | 🟢 Есть | `dpi_classifier.py`, `orchestra/targets.py` |
+| **Классификация блокировок ТСПУ** | Разбор причин (SNI, IP, заглушка) | Карточка «Глубокая диагностика ТСПУ» на странице BlockCheck: выявление DNS-спуфинга, TCP RST, TLS SNI сброса, HTTP-заглушек и QUIC блокировок. Бейджи CRITICAL/ERROR (badge-bad), WARNING (badge-warn), PASS (badge-ok), рекомендации и JSON-отчет | 🟢 Есть | `dpi_classifier.py`, `main.py`, `tests/test_dpi_classifier.py`, `tests/test_diagnostics_page.py` |
 | **Трей и уведомления** | Win32 Tray Icon + меню | TrayManager: AyatanaAppIndicator3 → AppIndicator3 → Gtk.StatusIcon → честное отсутствие трея, подменю пресетов, свитч в настройках | 🟢 Есть | `tray_manager.py`, `main.py`, `config_manager.py` |
 | **Постоянная строка статуса** | Статус-строка в главном окне | PersistentStatusBar внизу окна: бейдж состояния, пресет и движок, кнопка запуска/остановки, доступная с клавиатуры | 🟢 Есть | `persistent_bar.py`, `status_presenter.py`, `main.py` |
 | **Онбординг первого запуска** | Приветствие и тур по разделам | Трёхшаговый тур, флаг `onboarding_completed` в конфиге, повторный запуск из настроек и по F1 | 🟢 Есть | `onboarding.py`, `config_manager.py`, `main.py` |
@@ -158,13 +158,15 @@
   - Разработан модуль `dpi_classifier.py` с детальным распознаванием типов блокировок: `DNS_SPOOFING`, `TCP_RST_INJECTION`, `TLS_SNI_DROP`, `HTTP_BLOCKPAGE` (302/451/HTML-сигнатуры), `QUIC_BLACKHOLE`, `PASS`.
   - Генератор бинарных пакетов Chrome TLS 1.3 ClientHello с расширениями GREASE, ALPN (`h2`, `http/1.1`) и SNI.
   - Генератор RFC 9000 QUIC Initial пакетов (1200+ байт) для выявления UDP-фильтрации.
+  - Опциональный инъектируемый транспорт `curl_cffi` (Chrome TLS fingerprint) в `orchestra/targets.py` и `dpi_classifier.py` без превращения в жёсткую зависимость.
+  - **Подключение к UI:** карточка «Глубокая диагностика ТСПУ» подключена на страницу BlockCheck (`main.py:create_blockcheck_page`, `on_classify_tspu`). Фоновый поток, возврат в UI строго через `GLib.idle_add`, раскраска бейджей (CRITICAL/ERROR → `badge-bad`, WARNING → `badge-warn`, PASS → `badge-ok`), вывод BlockType, краткого описания, рекомендаций и сводки summary_text/to_json в monospace `Gtk.TextView`. Существующая экспресс-проверка бейджей сохранена.
 - **Этап 6 (DNS и расширенное управление списками):**
   - Создан каталог DoH/DoT провайдеров `dns_providers.py` с конкурентным замером RTT и каскадным резолвингом (Cloudflare -> Google -> Quad9 -> AdGuard -> System).
   - Реализован `list_manager.py` с поддержкой семантики исключений `!домен` (безусловный вырез домена и всех его поддоменов из `--hostlist` в `--hostlist-exclude`), IDN/Punycode нормализацией и атомарным экспортом для nfqws.
 - **Этап 7 (Анализ журналов и безопасный Support Bundle):**
   - Модуль `log_analyzer.py` распознает 5 классов инцидентов (права доступа, conntrack overflow, ошибки правил nftables, сбои resolv.conf, краши демонов) и генерирует рекомендации на русском.
   - Модуль `support_bundle.py` собирает зашифрованный диагностический архив `.tar.gz` со 100% маскированием конфиденциальных данных (RFC 1918, внешние IPv4/IPv6, MAC-адреса, пути `/home/<user>`, токены).
-  - **Важно:** модули этапов 5–7 реализованы и покрыты тестами как самостоятельные библиотеки, но пока не подключены к кнопкам и страницам `main.py`. Подключение — следующий шаг, а не выполненная интеграция.
+  - **Важно:** модули этапов 6–7 пока не подключены к кнопкам и страницам `main.py` (ждут своей очереди); Этапы 4 (Orchestra) и 5 (DPI Diagnostics) полностью интегрированы в главное окно `main.py`.
 - **Этап 10 (Упаковка и дистрибуция):**
   - Подготовлен `packaging/PKGBUILD` для Arch Linux / AUR, валидированный FreeDesktop `packaging/zapret-gui.desktop`, системный `packaging/zapret-gui.service`.
   - Разработаны скрипты `install.sh` и `uninstall.sh` с поддержкой системного и портативного режимов без root-прав. Все тесты валидации упаковки пройдены.
