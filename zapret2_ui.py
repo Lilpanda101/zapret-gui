@@ -18,6 +18,7 @@ gi.require_version("GLib", "2.0")
 from gi.repository import Gtk, Gdk, GLib
 
 import zapret2_core as core
+from catalog.preset_catalog import PresetCatalog, parse_preset_id
 
 
 FILTER_CATEGORIES = [
@@ -157,12 +158,18 @@ def preset_matches_category(item: dict, selected_category: str) -> bool:
 class Zapret2Page:
     def __init__(self, app):
         self.app = app
+        self.catalog = PresetCatalog.load_from_directory(
+            core.APP_DIR / "zapret2" / "presets" / "winws2_builtin",
+            core.USER_PRESETS,
+        )
         self.document = None
         self.preset_id = None
         self.profile_index = 0
         self._loading = False
         self.selected_category = "all"
         self.category_buttons = {}
+        self.chk_all_versions = None
+        self.lbl_catalog_stats = None
         self.game_banner = None
         self.health_badges = {}
         self.health_verdict = None
@@ -217,6 +224,21 @@ class Zapret2Page:
         self.preset_combo.connect("changed", self.on_preset_selected)
         row.pack_start(self.preset_combo, True, True, 0)
         selector.pack_start(row, False, False, 0)
+
+        # Переключатель показа всех версий и статистика каталога
+        ver_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        self.chk_all_versions = Gtk.CheckButton(label="Показать все версии пресетов")
+        self.chk_all_versions.set_active(False)
+        self.chk_all_versions.connect("toggled", self.refresh_catalog)
+        ver_row.pack_start(self.chk_all_versions, False, False, 0)
+
+        self.lbl_catalog_stats = Gtk.Label(
+            label=f"Каталог: {self.catalog.family_count} семейств · {self.catalog.total_count} версий",
+            xalign=0,
+        )
+        self.lbl_catalog_stats.get_style_context().add_class("page-subtitle")
+        ver_row.pack_start(self.lbl_catalog_stats, False, False, 0)
+        selector.pack_start(ver_row, False, False, 0)
 
         # Заметный информационный баннер для игровых пресетов (game filter)
         self.game_banner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -403,20 +425,59 @@ class Zapret2Page:
         if not selected.endswith(".txt"):
             selected += ".txt"
         query = self.search.get_text().casefold().strip() if hasattr(self, "search") else ""
-        raw_items = core.discover_presets()
-        items = [
-            item for item in raw_items
-            if (query in item["title"].casefold()) and preset_matches_category(item, self.selected_category)
-        ]
+        only_latest = not (self.chk_all_versions and self.chk_all_versions.get_active())
+
+        # Перезагружаем каталог с учетом возможных пользовательских пресетов
+        self.catalog = PresetCatalog.load_from_directory(
+            core.APP_DIR / "zapret2" / "presets" / "winws2_builtin",
+            core.USER_PRESETS,
+        )
+        if hasattr(self, "lbl_catalog_stats") and self.lbl_catalog_stats:
+            self.lbl_catalog_stats.set_text(
+                f"Каталог: {self.catalog.family_count} семейств · {self.catalog.total_count} версий"
+            )
+
+        entries = self.catalog.filter(
+            query=query,
+            only_latest_per_family=only_latest,
+        )
+
+        items = []
+        for entry in entries:
+            is_custom = (core.USER_PRESETS / entry.id).is_file()
+            match = False
+            if self.selected_category == "all":
+                match = True
+            elif self.selected_category in ("recommended", "top") and "recommended" in entry.tags:
+                match = True
+            elif self.selected_category == "circular" and ("circular" in entry.tags or "circular" in entry.id.casefold()):
+                match = True
+            elif self.selected_category == "game" and (entry.game_filter or "game" in entry.tags):
+                match = True
+            elif self.selected_category == "custom" and is_custom:
+                match = True
+
+            if match:
+                items.append(entry)
+
         self._loading = True
         self.preset_combo.remove_all()
         active_index = 0
-        for index, item in enumerate(items):
-            suffix = " [circular]" if item.get("circular") else ""
-            suffix += " [мой]" if item.get("custom") else ""
-            self.preset_combo.append(item["id"], item["title"] + suffix)
-            if selected == item["id"]:
+        for index, entry in enumerate(items):
+            display_title = entry.display_name
+            if not only_latest and entry.version:
+                display_title = f"{entry.family} — {entry.version}{' 🎮' if entry.game_filter else ''}"
+
+            suffix = ""
+            if "circular" in entry.tags and "circular" not in display_title.casefold():
+                suffix += " [circular]"
+            if (core.USER_PRESETS / entry.id).is_file():
+                suffix += " [мой]"
+
+            self.preset_combo.append(entry.id, display_title + suffix)
+            if selected == entry.id:
                 active_index = index
+
         if items:
             self.preset_combo.set_active(active_index)
         self._loading = False

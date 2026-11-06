@@ -36,10 +36,11 @@ class PresetEntry:
         )
 
 
-def parse_preset_id(filename: str) -> PresetEntry:
+def parse_preset_id(filename: str, text: str = "") -> PresetEntry:
     """
     Parses a preset filename into structured attributes without modifying the ID.
     Guarantees word-boundary separation between family and version (e.g. ALT1 vs ALT10).
+    Optionally accepts preset text to accurately detect desync/circular tags.
     """
     clean_id = filename.strip()
     if clean_id.endswith(".txt"):
@@ -64,18 +65,22 @@ def parse_preset_id(filename: str) -> PresetEntry:
 
     tags_list = []
     lower_name = clean_id.casefold()
+    lower_text = text.casefold() if text else ""
     if game_filter:
         tags_list.append("game")
-    if "circular" in lower_name:
+
+    import zapret2_core as core
+    cat = core.categorize_preset(clean_id, text)
+    if cat == "circular" or "circular" in lower_name or "--lua-desync=circular" in lower_text:
         tags_list.append("circular")
+    if cat in ("recommended", "top") or any(k in lower_name for k in ("general alt", "default (circular)", "fake tls auto", "hostfakesplit")):
+        tags_list.append("recommended")
     if "discord" in lower_name:
         tags_list.append("discord")
     if "youtube" in lower_name or "ytdisbystro" in lower_name:
         tags_list.append("youtube")
     if "alt" in lower_name:
         tags_list.append("alt")
-    if any(k in lower_name for k in ("general alt", "default (circular)", "fake tls auto", "hostfakesplit")):
-        tags_list.append("recommended")
 
     # Display name: family + version if present + [Game] badge if game_filter
     parts = [family]
@@ -95,6 +100,21 @@ def parse_preset_id(filename: str) -> PresetEntry:
     )
 
 
+def _version_sort_key(entry: PresetEntry) -> tuple:
+    """
+    Sort key for presets within a family:
+    1. Base presets without version come first (0, ()).
+    2. Versioned presets are sorted numerically by version components (e.g. 1.10.3 > 1.9.9, v3_1 > v2).
+    3. Plain presets come before game-filter variants.
+    """
+    if not entry.version:
+        ver_order = (0, ())
+    else:
+        nums = tuple(int(x) for x in re.findall(r"\d+", entry.version))
+        ver_order = (1, nums)
+    return (ver_order, entry.game_filter)
+
+
 class PresetCatalog:
     """Catalog of Zapret 2 presets grouped by families and searchable."""
 
@@ -104,18 +124,29 @@ class PresetCatalog:
         for e in entries:
             self._families.setdefault(e.family, []).append(e)
 
-        # Sort presets inside families: base first, then by version
+        # Sort presets inside families: base first, then numerically by version
         for fam, items in self._families.items():
-            items.sort(key=lambda x: (x.version is not None, x.version or "", x.game_filter))
+            items.sort(key=_version_sort_key)
 
     @classmethod
-    def load_from_directory(cls, dir_path: Path | str) -> PresetCatalog:
+    def load_from_directory(cls, dir_path: Path | str, user_dir: Optional[Path | str] = None) -> PresetCatalog:
         p = Path(dir_path)
-        if not p.is_dir():
-            return cls([])
-
-        files = sorted(f.name for f in p.glob("*.txt") if not f.name.startswith("."))
-        entries = [parse_preset_id(f) for f in files]
+        entries = []
+        seen = set()
+        if p.is_dir():
+            for f in sorted(p.glob("*.txt")):
+                if not f.name.startswith("."):
+                    text = f.read_text(encoding="utf-8-sig", errors="ignore")
+                    entries.append(parse_preset_id(f.name, text=text))
+                    seen.add(f.name)
+        if user_dir:
+            up = Path(user_dir)
+            if up.is_dir():
+                for f in sorted(up.glob("*.txt")):
+                    if not f.name.startswith(".") and f.name not in seen:
+                        text = f.read_text(encoding="utf-8-sig", errors="ignore")
+                        entries.append(parse_preset_id(f.name, text=text))
+                        seen.add(f.name)
         return cls(entries)
 
     @property

@@ -24,6 +24,7 @@ from gi.repository import Gtk, Gdk, GLib, Pango
 from updater import ZapretUpdater, get_update_meta, MirrorHealthMonitor
 from healer import get_healer, HEALER_LOG
 from zapret2_ui import Zapret2Page
+from catalog.preset_catalog import PresetCatalog
 from version import __version__, APP_TITLE, APP_SUBTITLE, APP_DESCRIPTION
 from engine_params import EngineParams
 from config_manager import (
@@ -829,10 +830,15 @@ class Zapret2App(Gtk.Window):
         sidebar.pack_start(brand_box, False, False, 0)
 
         # Navigation items grouped like Windows Zapret 2 UI
+        preset_cat = PresetCatalog.load_from_directory(os.path.join(APP_DIR, "zapret2", "presets", "winws2_builtin"))
+        preset_nav_label = (
+            f"🧩 Пресеты Zapret 2 ({preset_cat.family_count} сем. · {preset_cat.total_count})"
+            if preset_cat.total_count else "🧩 Пресеты Zapret 2"
+        )
         nav_structure = [
             ("main", [("dashboard", "⚡ Управление Zapret 2")]),
             ("НАСТРОЙКИ ЗАПРЕТА", [
-                ("zapret2", "🧩 Пресеты Zapret 2 (136)"),
+                ("zapret2", preset_nav_label),
                 ("dpi_mode", "⚡ Режим DPI и скорость"),
                 ("presets", "📁 Профили (Legacy v1)"),
                 ("profiles", "▷ Параметры (Legacy v1)"),

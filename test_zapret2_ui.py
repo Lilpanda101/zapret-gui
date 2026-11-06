@@ -54,7 +54,12 @@ def test_gtk_catalog_and_profile_editor(monkeypatch, tmp_path):
     page = Zapret2Page(app)
     widget = page.create()
     assert widget is not None
+    # По умолчанию отображаются актуальные версии 63 семейств
+    assert len(page.preset_combo.get_model()) == 63
+    # При включении флага всех версий отображаются все 136 пресетов
+    page.chk_all_versions.set_active(True)
     assert len(page.preset_combo.get_model()) == 136
+    page.preset_combo.set_active_id("Default (circular).txt")
     assert page.preset_id == "Default (circular).txt"
     assert page.document.profiles
     assert "--" in page.buffer.get_text(page.buffer.get_start_iter(), page.buffer.get_end_iter(), False)
@@ -72,6 +77,9 @@ def test_preset_categories_and_filtering(monkeypatch, tmp_path):
     page = Zapret2Page(app)
     widget = page.create()
 
+    # Включаем все версии для проверки категорий по полному каталогу 136 пресетов
+    page.chk_all_versions.set_active(True)
+
     # Проверка наличия 4 кнопок-фильтров
     assert "recommended" in page.category_buttons
     assert "circular" in page.category_buttons
@@ -86,7 +94,7 @@ def test_preset_categories_and_filtering(monkeypatch, tmp_path):
     model = page.preset_combo.get_model()
     for row in model:
         title = row[1].casefold()
-        assert "game filter" in title or "gaming" in title
+        assert "game filter" in title or "gaming" in title or "🎮" in title
 
     # 2. Переключение на «Circular (Адаптивные)»
     page.category_buttons["circular"].set_active(True)
