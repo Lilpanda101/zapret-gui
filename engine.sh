@@ -35,14 +35,26 @@ init_state_dir() {
     fi
 }
 
+LOCK_HELD=0
+
 acquire_lock() {
     init_state_dir
-    if [ "$EUID" -eq 0 ]; then
+    if [ "$EUID" -eq 0 ] || [ "${FORCE_LOCK:-0}" = "1" ]; then
+        [ "$LOCK_HELD" = "1" ] && return 0
         exec 200>"$LOCKFILE"
         if ! flock -w 10 200; then
             echo "ERROR: Engine lock ($LOCKFILE) is busy. Another operation is in progress." >&2
             exit 1
         fi
+        LOCK_HELD=1
+    fi
+}
+
+release_lock() {
+    if [ "$LOCK_HELD" = "1" ]; then
+        flock -u 200 2>/dev/null || true
+        exec 200>&- 2>/dev/null || true
+        LOCK_HELD=0
     fi
 }
 

@@ -56,3 +56,49 @@ def test_wait_for_process_start_honors_pidfile_even_if_unit_failed(tmp_path):
             proc.wait(timeout=1)
         except subprocess.TimeoutExpired:
             proc.kill()
+
+def test_acquire_lock_idempotency_keeps_flock_locked(tmp_path):
+    """
+    Behavioral test: Calling acquire_lock multiple times (e.g. start_engine calling stop_engine)
+    must NOT close fd 200 and must NOT drop the flock.
+    A parallel process attempting non-blocking flock during this time must fail with exit code 1.
+    """
+    lock_file = tmp_path / "engine.lock"
+
+    # Script: acquires lock, re-acquires (nested), and sleeps while holding lock
+    holder_script = (
+        f"source '{ENGINE_SH}'\n"
+        f"STATE_DIR='{tmp_path}'\n"
+        f"LOCKFILE='{lock_file}'\n"
+        f"FORCE_LOCK=1\n"
+        f"acquire_lock\n"
+        f"acquire_lock\n"  # Nested call, should be idempotent
+        f"echo 'LOCKED'\n"
+        f"sleep 2\n"
+        f"release_lock\n"
+    )
+
+    proc = subprocess.Popen(
+        ["bash", "-c", holder_script],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
+    )
+
+    try:
+        # Wait until holder confirms lock is acquired
+        line = proc.stdout.readline().strip()
+        assert line == "LOCKED", f"Holder failed to acquire lock: {proc.stderr.read()}"
+
+        # Parallel process attempts to grab lock non-blockingly
+        probe = subprocess.run(
+            ["flock", "-n", str(lock_file), "true"],
+            capture_output=True
+        )
+        assert probe.returncode != 0, "Flock was unexpectedly released or not held during nested call!"
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            proc.kill()
