@@ -139,6 +139,8 @@ class Orchestrator:
         candidates = list(candidates or [])
         started = self._time_fn()
         results = []
+        self.results = results
+        self.last_preset_result = None
         best = None
         stopped = False
         reason = ''
@@ -166,6 +168,7 @@ class Orchestrator:
             except Exception as exc:
                 result = PresetResult(preset_id, 0, len(self.targets), 9999, (), str(exc))
             results.append(result)
+            self.last_preset_result = result
             if self.history is not None:
                 try:
                     self.history.append(RunRecord.from_result(result))
