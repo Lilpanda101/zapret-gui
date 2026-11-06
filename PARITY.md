@@ -47,7 +47,7 @@
 | **Автоподбор пресетов** | Оркестратор по полному каталогу | `orchestra/` подключён к `main.py:on_auto_preset_clicked`: стабильность 2 из 3, скоринг, JSONL-история, откат | 🟢 Есть | `orchestra/`, `main.py`, `tests/test_orchestrator.py`, `test_engine_contract.py` |
 | **Auto-Hostlist (сбор доменов)** | Встроенный перехват nfqws2 | `zapret2_core.py:get_auto_hostlist_domains` | 🟢 Есть | `zapret2_core.py`, `zapret2_ui.py` |
 | **Синхронизация и обновления** | Автообновление через GitHub/Forgejo | 4 зеркала (git2/git3/mos/flic), SHA256 | 🟢 Есть | `updater.py` |
-| **Health Check и автолечение** | Служба самовосстановления | Демон `healer.py` (реакция на NFQWS_ONLY, авторестарт) | 🟡 Частично | Доработка до строгого FSM в Этапе 4 |
+| **Health Check и автолечение** | Служба самовосстановления | Строгий FSM демон `healer.py` (IDLE, CHECKING, RESTARTING, BACKOFF, DEGRADED, STOPPED, эксп. backoff, без busy-loop) | 🟢 Есть | `healer.py`, `tests/test_healer_fsm.py` |
 | **Реалистичные пробы (TLS fingerprint)** | Браузерные отпечатки | urllib (Python fingerprint) | 🟡 Частично | Миграция на `curl_cffi` (Chrome TLS) в Этапе 5 |
 | **Классификация блокировок ТСПУ** | Разбор причин (SNI, IP, заглушка) | Базовый HTTP-код/ошибка | 🟡 Частично | Модуль `diagnostics/classify.py` в Этапе 5 |
 | **Трей и уведомления** | Win32 Tray Icon + меню | TrayManager: AyatanaAppIndicator3 → AppIndicator3 → Gtk.StatusIcon → честное отсутствие трея, подменю пресетов, свитч в настройках | 🟢 Есть | `tray_manager.py`, `main.py`, `config_manager.py` |
@@ -154,6 +154,7 @@
   - Оркестратор интегрирован в `main.py:on_auto_preset_clicked` вместо примитивного перебора: движок применяется через `EngineParams`, пробы идут через `orchestra.targets.http_probe`, прогресс обновляется через `GLib.idle_add`, результат сохраняется в `~/.config/zapret-gui/autotune-history.jsonl`. Контрактные тесты обновлены: победитель всегда остаётся запущенным, повторное применение — только если он не тестировался последним.
   - Виджет `orchestra_ui.py` пока является самостоятельным компонентом; его встройка в главное окно — отдельный шаг.
   - Мониторинг сети `NetworkManagerMonitor` через D-Bus с отказоустойчивым парсером `/proc/net/route` при отсутствии D-Bus/NM.
+  - **Строгий FSM для AutoHealer:** ad-hoc цикл заменён на детерминированный конечный автомат `HealerFSM` (6 состояний: `IDLE`, `CHECKING`, `RESTARTING`, `BACKOFF`, `DEGRADED`, `STOPPED`). Экспоненциальный backoff с потолком (300с) без busy-loop на `threading.Event`, логгирование каждого перехода с причиной, полное сохранение контрактов `EngineParams` и CLI. Покрыт 19 тестами в `tests/test_healer_fsm.py` (суммарно 350 тестов, 100% pass).
 - **Этап 5 (Диагностика и классификация ТСПУ):**
   - Разработан модуль `dpi_classifier.py` с детальным распознаванием типов блокировок: `DNS_SPOOFING`, `TCP_RST_INJECTION`, `TLS_SNI_DROP`, `HTTP_BLOCKPAGE` (302/451/HTML-сигнатуры), `QUIC_BLACKHOLE`, `PASS`.
   - Генератор бинарных пакетов Chrome TLS 1.3 ClientHello с расширениями GREASE, ALPN (`h2`, `http/1.1`) и SNI.
