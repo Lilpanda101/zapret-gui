@@ -8,20 +8,25 @@ PRESETS_DIR = Path("zapret2/presets/winws2_builtin")
 
 
 def test_version_sorting_semver_numeric():
-    """Проверяет, что 1.10.3 считается новее 1.9.9, а v3_1 новее v2."""
+    """Проверяет, что 1.10.3 считается новее 1.9.9, а v3_2 новее v2."""
     catalog = PresetCatalog.load_from_directory(PRESETS_DIR)
-    
-    # Семейство general ALT9 имеет версии 1.9.4, 1.9.5, 1.9.9, 1.10.3
-    alt9_presets = catalog.get_family("general ALT9")
-    assert len(alt9_presets) > 0
-    # Последним элементом должна быть именно версия 1.10.3
-    latest_alt9 = alt9_presets[-1]
-    assert latest_alt9.version == "1.10.3", f"Expected latest version 1.10.3, but got {latest_alt9.version}"
 
-    # При фильтрации only_latest_per_family=True для general ALT9 должен вернуться 1.10.3
-    filtered = catalog.filter(family="general ALT9", only_latest_per_family=True)
+    # Семейство general ALT1 имеет версии 1.9.9 и 1.10.3
+    alt1_presets = catalog.get_family("general ALT1")
+    assert len(alt1_presets) > 0
+    # Последним элементом должна быть именно версия 1.10.3
+    latest_alt1 = alt1_presets[-1]
+    assert latest_alt1.version == "1.10.3", f"Expected latest version 1.10.3, but got {latest_alt1.version}"
+
+    # При фильтрации only_latest_per_family=True для general ALT1 возвращается 1.10.3
+    filtered = catalog.filter(family="general ALT1", only_latest_per_family=True)
     assert len(filtered) == 1
     assert filtered[0].version == "1.10.3"
+
+    # Для ALL TCP & UDP последней версией должна быть v3_2
+    filtered_tcp = catalog.filter(family="ALL TCP & UDP", only_latest_per_family=True)
+    assert len(filtered_tcp) == 1
+    assert filtered_tcp[0].version == "v3_2"
 
 
 def test_only_latest_per_family_returns_exact_family_count():

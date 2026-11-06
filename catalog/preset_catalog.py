@@ -200,8 +200,9 @@ class PresetCatalog:
         for fam in target_families:
             items = self._families[fam]
             if only_latest_per_family and items:
-                # Last item in sorted family is latest version
-                items = [items[-1]]
+                # Prefer plain non-game-filter preset; show game filter only if family has no plain variants
+                plain = [e for e in items if not e.game_filter]
+                items = [(plain or items)[-1]]
 
             for item in items:
                 if only_game_filter and not item.game_filter:

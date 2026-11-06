@@ -54,7 +54,7 @@ def test_switch_to_next_zapret2_preset(monkeypatch, tmp_path):
             pass
 
     result = healer.switch_to_next_preset(config, State())
-    assert result == "Default (circular)"
+    assert result == "Default (circular) v2.txt"
     assert json.loads(config_file.read_text())["zapret2_preset"] == result
 
 
@@ -69,7 +69,7 @@ def test_switch_from_unknown_preset_uses_first_working(monkeypatch, tmp_path):
         def save(self):
             pass
 
-    assert healer.switch_to_next_preset(config, State()) == "general ALT"
+    assert healer.switch_to_next_preset(config, State()) == "general ALT.txt"
 
 
 def test_failure_count_reaches_preset_switch(monkeypatch):
@@ -121,20 +121,20 @@ def test_switch_preset_rotation_handles_txt_suffix_and_cycles(monkeypatch, tmp_p
     # Начинаем с суффиксом .txt
     config = {"engine_mode": "nfqws2", "zapret2_preset": "general ALT.txt"}
     res1 = healer.switch_to_next_preset(config, state)
-    assert res1 == "Default (circular)"
+    assert res1 == "Default (circular) v2.txt"
 
     res2 = healer.switch_to_next_preset(config, state)
-    assert res2 == "general FAKE TLS AUTO"
+    assert res2 == "general FAKE TLS AUTO v2.txt"
 
     # Теперь симулируем, что текущий был сохранён как .txt
     config["zapret2_preset"] = "general FAKE TLS AUTO.txt"
     res3 = healer.switch_to_next_preset(config, state)
-    assert res3 == "ALL TCP & UDP hostfakesplit"
+    assert res3 == "ALL TCP & UDP hostfakesplit.txt"
 
     # Замыкание цикла обратно на первый
     config["zapret2_preset"] = "ALL TCP & UDP hostfakesplit.txt"
     res4 = healer.switch_to_next_preset(config, state)
-    assert res4 == "general ALT"
+    assert res4 == "general ALT.txt"
 
 
 def test_healer_state_dns_tracking(tmp_path, monkeypatch):

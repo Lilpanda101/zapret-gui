@@ -461,14 +461,8 @@ class Zapret2Page:
             self.selected_category = cat_id
             self.refresh_catalog()
 
-    def refresh_catalog(self, *_):
-        selected = Path(self.preset_id or getattr(self.app, "zapret2_preset", "Default (circular)")).name
-        if not selected.endswith(".txt"):
-            selected += ".txt"
-        query = self.search.get_text().casefold().strip() if hasattr(self, "search") else ""
-        only_latest = not (self.chk_all_versions and self.chk_all_versions.get_active())
-
-        # Перезагружаем каталог с учетом возможных пользовательских пресетов
+    def invalidate_catalog(self):
+        """Инвалидирует кэш каталога и перечитывает пресеты с диска."""
         self.catalog = PresetCatalog.load_from_directory(
             core.APP_DIR / "zapret2" / "presets" / "winws2_builtin",
             core.USER_PRESETS,
@@ -477,6 +471,16 @@ class Zapret2Page:
             self.lbl_catalog_stats.set_text(
                 f"Каталог: {self.catalog.family_count} семейств · {self.catalog.total_count} версий"
             )
+
+    def refresh_catalog(self, *_):
+        selected = Path(self.preset_id or getattr(self.app, "zapret2_preset", "Default (circular)")).name
+        if not selected.endswith(".txt"):
+            selected += ".txt"
+        query = self.search.get_text().casefold().strip() if hasattr(self, "search") else ""
+        only_latest = not (self.chk_all_versions and self.chk_all_versions.get_active())
+
+        if self.catalog is None:
+            self.invalidate_catalog()
 
         entries = self.catalog.filter(
             query=query,
@@ -696,6 +700,7 @@ class Zapret2Page:
                 self._is_dirty = False
                 unsupported = core.check_preset_unsupported_options(doc_text)
                 self.preset_id = saved_path.name
+                self.invalidate_catalog()
                 self.refresh_catalog()
                 self.preset_combo.set_active_id(saved_path.name)
                 msg = f"Пресет успешно сохранён как '{saved_path.name}'."
@@ -801,6 +806,7 @@ class Zapret2Page:
 
     def reset(self, _):
         core.reset_user_preset(self.preset_id)
+        self.invalidate_catalog()
         self.load_preset(self.preset_id)
 
     def import_preset(self, _):
@@ -821,6 +827,7 @@ class Zapret2Page:
             path = core.import_preset(Path(filename))
             self.preset_id = path.name
             self.search.set_text("")
+            self.invalidate_catalog()
             self.refresh_catalog()
         except Exception as exc:
             self.app.show_dialog("Ошибка импорта", str(exc))

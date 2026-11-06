@@ -245,22 +245,27 @@ def switch_to_next_preset(config, state=None):
         builtin_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zapret2", "presets", "winws2_builtin")
         catalog = PresetCatalog.load_from_directory(builtin_dir)
         top_entries = catalog.get_top_recommended()
-        presets = [p.family for p in top_entries]
         key = "zapret2_preset"
-        current_raw = config.get(key, presets[0] if presets else "")
+        current_raw = config.get(key, top_entries[0].id if top_entries else "")
         current_fam = parse_preset_id(current_raw).family
+        top_families = [p.family for p in top_entries]
+        try:
+            idx = top_families.index(current_fam)
+            next_idx = (idx + 1) % len(top_entries)
+        except ValueError:
+            next_idx = 0
+        next_preset = top_entries[next_idx].id if top_entries else current_raw
     else:
         presets = ["general", "youtube_discord", "alt_fakedsplit", "alt_split", "multidisorder"]
         key = "preset"
         current_raw = config.get(key, "general")
-        current_fam = current_raw
+        try:
+            idx = presets.index(current_raw)
+            next_idx = (idx + 1) % len(presets)
+        except ValueError:
+            next_idx = 0
+        next_preset = presets[next_idx]
 
-    try:
-        idx = presets.index(current_fam)
-        next_idx = (idx + 1) % len(presets)
-    except ValueError:
-        next_idx = 0
-    next_preset = presets[next_idx] if presets else current_raw
     log(f"Switching preset: {current_raw} -> {next_preset}")
     config[key] = next_preset
     try:
