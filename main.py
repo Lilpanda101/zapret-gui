@@ -15,6 +15,7 @@ import time
 import socket
 import urllib.request
 import urllib.error
+import html
 import gi
 
 gi.require_version("Gtk", "3.0")
@@ -62,6 +63,8 @@ from window_state import (
     setup_window_shortcuts,
     apply_a11y_tooltips,
 )
+from log_analyzer import analyze_log_file
+from support_bundle import create_support_bundle
 
 AppIndicator = None
 try:
@@ -2642,16 +2645,19 @@ class Zapret2App(Gtk.Window):
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         card.get_style_context().add_class("fluent-card")
 
+        log_path_display = getattr(self, "custom_log_path", None) or LOG_FILE
         h_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        h_box.pack_start(Gtk.Label(label="<b>Лог /tmp/zapret-gui.log:</b>", use_markup=True, xalign=0), True, True, 0)
-        btn_refresh = Gtk.Button(label="🔄 Обновить лог")
-        btn_refresh.get_style_context().add_class("fluent-btn-secondary")
-        btn_refresh.connect("clicked", lambda _: self.read_log_file())
-        h_box.pack_end(btn_refresh, False, False, 0)
+        self.lbl_log_file = Gtk.Label(label=f"<b>Лог {html.escape(str(log_path_display))}:</b>", use_markup=True, xalign=0)
+        h_box.pack_start(self.lbl_log_file, True, True, 0)
+
+        self.btn_refresh_log = Gtk.Button(label="🔄 Обновить лог")
+        self.btn_refresh_log.get_style_context().add_class("fluent-btn-secondary")
+        self.btn_refresh_log.connect("clicked", lambda _: self.read_log_file())
+        h_box.pack_end(self.btn_refresh_log, False, False, 0)
         card.pack_start(h_box, False, False, 0)
 
         scroller = Gtk.ScrolledWindow()
-        scroller.set_size_request(-1, 380)
+        scroller.set_size_request(-1, 320)
         self.log_buffer = Gtk.TextBuffer()
         self.log_view = Gtk.TextView(buffer=self.log_buffer)
         self.log_view.get_style_context().add_class("log-view")
@@ -2659,14 +2665,57 @@ class Zapret2App(Gtk.Window):
         scroller.add(self.log_view)
         card.pack_start(scroller, True, True, 0)
 
+        # Action buttons: Analyze log & Support bundle
+        actions_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        actions_box.set_margin_top(4)
+
+        self.btn_analyze_log = Gtk.Button(label="🔍 Анализировать журнал")
+        self.btn_analyze_log.get_style_context().add_class("fluent-btn-primary")
+        self.btn_analyze_log.connect("clicked", self.on_analyze_log_clicked)
+        actions_box.pack_start(self.btn_analyze_log, False, False, 0)
+
+        self.btn_support_bundle = Gtk.Button(label="📦 Собрать support bundle")
+        self.btn_support_bundle.get_style_context().add_class("fluent-btn-secondary")
+        self.btn_support_bundle.connect("clicked", self.on_support_bundle_clicked)
+        actions_box.pack_start(self.btn_support_bundle, False, False, 0)
+
+        card.pack_start(actions_box, False, False, 0)
+
+        # Support bundle feedback label
+        self.lbl_support_status = Gtk.Label(label="", use_markup=True, xalign=0)
+        self.lbl_support_status.set_line_wrap(True)
+        card.pack_start(self.lbl_support_status, False, False, 0)
+
         vbox.pack_start(card, False, False, 0)
+
+        # Analysis Card
+        self.card_analysis = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self.card_analysis.get_style_context().add_class("fluent-card")
+
+        header_analysis = Gtk.Label(label="<b>Интеллектуальный анализ инцидентов (Log Analyzer)</b>", use_markup=True, xalign=0)
+        self.card_analysis.pack_start(header_analysis, False, False, 0)
+
+        self.analysis_summary_label = Gtk.Label(
+            label="Нажмите «Анализировать журнал» для автоматической диагностики инцидентов, conntrack overflow и ошибок правил nftables.",
+            use_markup=True,
+            xalign=0
+        )
+        self.analysis_summary_label.set_line_wrap(True)
+        self.card_analysis.pack_start(self.analysis_summary_label, False, False, 0)
+
+        self.analysis_incidents_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self.card_analysis.pack_start(self.analysis_incidents_box, False, False, 0)
+
+        vbox.pack_start(self.card_analysis, False, False, 0)
+
         self.read_log_file()
         return page
 
     def read_log_file(self):
-        if os.path.exists(LOG_FILE):
+        log_path = getattr(self, "custom_log_path", None) or LOG_FILE
+        if os.path.exists(log_path):
             try:
-                with open(LOG_FILE, "r", encoding="utf-8", errors="ignore") as f:
+                with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
                     lines = f.readlines()
                     tail = "".join(lines[-150:])
                     self.log_buffer.set_text(tail)
@@ -2674,6 +2723,199 @@ class Zapret2App(Gtk.Window):
                 self.log_buffer.set_text(f"Ошибка чтения лога: {e}")
         else:
             self.log_buffer.set_text("Лог-файл пуст или служба еще не запускалась.")
+
+    def on_analyze_log_clicked(self, _=None):
+        log_path = getattr(self, "custom_log_path", None) or LOG_FILE
+        self.btn_analyze_log.set_sensitive(False)
+        if hasattr(self, "btn_support_bundle"):
+            self.btn_support_bundle.set_sensitive(False)
+        self.analysis_summary_label.set_markup("<i>Выполняется анализ журнала логов...</i>")
+
+        for child in self.analysis_incidents_box.get_children():
+            self.analysis_incidents_box.remove(child)
+
+        def _analyze_worker():
+            report = None
+            err = None
+            try:
+                report = analyze_log_file(log_path)
+            except Exception as exc:
+                err = str(exc)
+            GLib.idle_add(self._on_analysis_finished, report, err)
+
+        self._analyze_thread = threading.Thread(target=_analyze_worker, daemon=True)
+        self._analyze_thread.start()
+
+    def _on_analysis_finished(self, report, err):
+        self.btn_analyze_log.set_sensitive(True)
+        if hasattr(self, "btn_support_bundle"):
+            self.btn_support_bundle.set_sensitive(True)
+
+        for child in self.analysis_incidents_box.get_children():
+            self.analysis_incidents_box.remove(child)
+
+        if err:
+            self.analysis_summary_label.set_markup(
+                f"<span foreground='#f87171'><b>Ошибка анализа:</b> {html.escape(err)}</span>"
+            )
+            return
+
+        if not report:
+            self.analysis_summary_label.set_markup("Отчет анализа пуст.")
+            return
+
+        src_text = html.escape(str(report.source))
+        summary_text = html.escape(str(report.summary))
+        self.analysis_summary_label.set_markup(
+            f"<b>Источник:</b> {src_text}  |  <b>Всего строк:</b> {report.total_lines}\n{summary_text}"
+        )
+
+        if not report.incidents:
+            ok_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            ok_badge = Gtk.Label(label=" OK ")
+            ok_badge.get_style_context().add_class("badge-ok")
+            ok_box.pack_start(ok_badge, False, False, 0)
+            ok_lbl = Gtk.Label(
+                label="Инцидентов в журнале не обнаружено. Ошибок сетевых служб и демонов нет.",
+                xalign=0
+            )
+            ok_box.pack_start(ok_lbl, True, True, 0)
+            self.analysis_incidents_box.pack_start(ok_box, False, False, 0)
+        else:
+            for incident in report.incidents:
+                row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+                row.get_style_context().add_class("fluent-card")
+                row.set_margin_bottom(4)
+
+                header_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+                sev_badge = Gtk.Label(label=f" {incident.severity} ")
+                if incident.severity == "CRITICAL":
+                    sev_badge.get_style_context().add_class("badge-bad")
+                elif incident.severity in ("ERROR", "WARNING"):
+                    sev_badge.get_style_context().add_class("badge-warn")
+                else:
+                    sev_badge.get_style_context().add_class("badge-neutral")
+                header_box.pack_start(sev_badge, False, False, 0)
+
+                title_lbl = Gtk.Label(
+                    label=f"<b>{html.escape(incident.title)}</b>",
+                    use_markup=True,
+                    xalign=0
+                )
+                header_box.pack_start(title_lbl, True, True, 0)
+
+                count_badge = Gtk.Label(label=f"Повторов: {incident.count}")
+                count_badge.get_style_context().add_class("badge-neutral")
+                header_box.pack_end(count_badge, False, False, 0)
+                row.pack_start(header_box, False, False, 0)
+
+                desc_lbl = Gtk.Label(
+                    label=f"<b>Описание:</b> {html.escape(incident.description)}",
+                    use_markup=True,
+                    xalign=0
+                )
+                desc_lbl.set_line_wrap(True)
+                row.pack_start(desc_lbl, False, False, 0)
+
+                rec_lbl = Gtk.Label(
+                    label=f"💡 <b>Рекомендация:</b> {html.escape(incident.recommendation)}",
+                    use_markup=True,
+                    xalign=0
+                )
+                rec_lbl.set_line_wrap(True)
+                row.pack_start(rec_lbl, False, False, 0)
+
+                self.analysis_incidents_box.pack_start(row, False, False, 0)
+
+        self.analysis_incidents_box.show_all()
+
+    def confirm_support_bundle_sanitization(self) -> bool:
+        """Warn user about bundle sanitization and requirement to inspect archive before sending."""
+        dialog = Gtk.MessageDialog(
+            transient_for=self,
+            flags=0,
+            message_type=Gtk.MessageType.WARNING,
+            buttons=Gtk.ButtonsType.OK_CANCEL,
+            text="Сбор диагностического архива (Support Bundle)",
+        )
+        dialog.format_secondary_text(
+            "Диагностический архив автоматически санитизирует персональные данные "
+            "(IP-адреса, MAC, логины и домашние пути).\n\n"
+            "Тем не менее, архив всё равно необходимо внимательно просмотреть перед отправкой разработчикам.\n\n"
+            "Продолжить сборку архива?"
+        )
+        resp = dialog.run()
+        dialog.destroy()
+        return resp == Gtk.ResponseType.OK
+
+    def choose_support_bundle_directory(self):
+        """Open folder chooser dialog for saving support bundle."""
+        chooser = Gtk.FileChooserDialog(
+            title="Выберите папку для сохранения архива Support Bundle",
+            parent=self,
+            action=Gtk.FileChooserAction.SELECT_FOLDER,
+        )
+        chooser.add_buttons(
+            "Отмена", Gtk.ResponseType.CANCEL,
+            "Выбрать", Gtk.ResponseType.OK,
+        )
+        resp = chooser.run()
+        selected_dir = chooser.get_filename() if resp == Gtk.ResponseType.OK else None
+        chooser.destroy()
+        return selected_dir
+
+    def on_support_bundle_clicked(self, _=None):
+        if not self.confirm_support_bundle_sanitization():
+            return
+
+        selected_dir = self.choose_support_bundle_directory()
+        if not selected_dir:
+            return
+
+        log_path = getattr(self, "custom_log_path", None) or LOG_FILE
+        config_path = getattr(self, "custom_config_path", None) or CONFIG_FILE
+
+        self.btn_support_bundle.set_sensitive(False)
+        if hasattr(self, "btn_analyze_log"):
+            self.btn_analyze_log.set_sensitive(False)
+        self.lbl_support_status.set_markup("<i>Создание архива Support Bundle...</i>")
+
+        def _bundle_worker():
+            archive_path = None
+            err = None
+            try:
+                archive_path = create_support_bundle(
+                    output_dir=selected_dir,
+                    custom_log_path=log_path,
+                    custom_config_path=config_path,
+                )
+            except Exception as exc:
+                err = str(exc)
+            GLib.idle_add(self._on_support_bundle_finished, archive_path, err)
+
+        self._bundle_thread = threading.Thread(target=_bundle_worker, daemon=True)
+        self._bundle_thread.start()
+
+    def _on_support_bundle_finished(self, archive_path, err):
+        self.btn_support_bundle.set_sensitive(True)
+        if hasattr(self, "btn_analyze_log"):
+            self.btn_analyze_log.set_sensitive(True)
+
+        if err:
+            self.lbl_support_status.set_markup(
+                f"<span foreground='#f87171'><b>Ошибка сборки:</b> {html.escape(err)}</span>"
+            )
+            self.show_dialog("Ошибка", f"Не удалось создать Support Bundle:\n{err}")
+        else:
+            full_path = str(archive_path)
+            self.lbl_support_status.set_markup(
+                f"<b>Архив создан:</b> {html.escape(full_path)}"
+            )
+            self.show_dialog(
+                "Support Bundle создан",
+                f"Диагностический архив успешно создан:\n{full_path}\n\n"
+                "Пожалуйста, распакуйте или просмотрите архив перед отправкой."
+            )
 
     # ================= PAGE 11: SETTINGS =================
     def create_settings_page(self):
