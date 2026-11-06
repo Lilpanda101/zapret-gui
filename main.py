@@ -14,6 +14,7 @@ import time
 import socket
 import urllib.request
 import urllib.error
+import logging
 import gi
 
 gi.require_version("Gtk", "3.0")
@@ -21,6 +22,18 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("GLib", "2.0")
 from gi.repository import Gtk, Gdk, GLib, Pango
 
+from dns_providers import (
+    DNS_CATALOG,
+    ENGINE_SUPPORTED_DNS,
+    DNSProvider,
+    list_providers,
+    probe_all_rtt,
+)
+from list_manager import (
+    ListManager,
+    compile_effective_lists,
+    atomic_write_text,
+)
 from updater import ZapretUpdater, get_update_meta, MirrorHealthMonitor
 from healer import get_healer, HEALER_LOG
 from zapret2_ui import Zapret2Page
@@ -63,6 +76,8 @@ except Exception:
         from gi.repository import AppIndicator3 as AppIndicator
     except Exception:
         AppIndicator = None
+
+logger = logging.getLogger("zapret_gui.main")
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 ENGINE_SH = os.path.join(APP_DIR, "engine.sh")
@@ -569,62 +584,33 @@ PRESETS = {
     }
 }
 
-DNS_SERVERS = {
-    "cloudflare": {
-        "title": "Cloudflare DNS (DoT 1.1.1.1)",
-        "ip": "1.1.1.1#cloudflare-dns.com",
-        "badge": "Быстрый",
-        "desc": "DNS-over-TLS с минимальной задержкой, защитой приватности и отказом от AAAA для избежания таймаутов IPv6."
-    },
-    "dns_ai": {
-        "title": "DNS-AI (Нейросети DoT)",
-        "ip": "194.87.196.13#dns-ai.ru",
-        "badge": "Разблокировка ИИ",
-        "desc": "Специализированный DoT резолвер с автоматической маршрутизацией ChatGPT, Gemini, Claude, Cursor, Copilot."
-    },
-    "geohide": {
-        "title": "Geohide DNS (Обход гео-блокировок)",
-        "ip": "37.230.192.51#geohide.ru",
-        "badge": "Геоблокировки",
-        "desc": "Умный DoT резолвер, возвращающий незаблокированные зарубежные IP для Spotify, Canva, Notion, Figma."
-    },
-    "xbox": {
+DNS_SERVERS = {}
+for _prov in list_providers(include_system=True):
+    _dot_ip = _prov.dot_ips[0] if _prov.dot_ips else ("none" if _prov.id == "system" else "")
+    DNS_SERVERS[_prov.id] = {
+        "title": _prov.name,
+        "ip": _dot_ip,
+        "badge": _prov.badge,
+        "desc": _prov.description,
+        "is_supported": _prov.id in ENGINE_SUPPORTED_DNS,
+    }
+
+if "xbox" not in DNS_SERVERS:
+    DNS_SERVERS["xbox"] = {
         "title": "Xbox / PlayStation Shecan DNS",
         "ip": "178.22.122.100#free.shecan.ir",
         "badge": "Консоли и Игры",
-        "desc": "Шлюз для онлайн-сервисов Xbox Live, PlayStation Network, EA App и Ubisoft Connect без блокировок."
-    },
-    "quad9": {
-        "title": "Quad9 (DoT 9.9.9.9)",
-        "ip": "9.9.9.9#dns.quad9.net",
-        "badge": "Безопасность",
-        "desc": "Швейцарский DoT резолвер с автоматической блокировкой вредоносных фишинговых сайтов."
-    },
-    "adguard": {
-        "title": "AdGuard DNS (DoT)",
-        "ip": "94.140.14.14#dns.adguard-dns.com",
-        "badge": "Блокировка рекламы",
-        "desc": "Фильтрация трекеров и рекламных сетей на уровне DNS-запросов операционной системы."
-    },
-    "google": {
-        "title": "Google Public DNS (DoT 8.8.8.8)",
-        "ip": "8.8.8.8#dns.google",
-        "badge": "Универсальный",
-        "desc": "Глобальная сеть DNS-серверов Google с поддержкой шифрования DNS-over-TLS."
-    },
-    "system": {
-        "title": "Системный DNS (NetworkManager / Провайдер)",
-        "ip": "none",
-        "badge": "По умолчанию",
-        "desc": "Использовать стандартные DNS серверы, выданные вашим роутером или провайдером по DHCP."
+        "desc": "Шлюз для онлайн-сервисов Xbox Live, PlayStation Network, EA App и Ubisoft Connect.",
+        "is_supported": False,
     }
-}
 
 
 class Zapret2App(Gtk.Window):
     def __init__(self, minimized=False):
         super().__init__(title=APP_TITLE)
         self.is_system_mode = check_installation_security()
+        self.app_dir = APP_DIR
+        self.list_manager = ListManager(base_dir=self.app_dir)
         self.window_width = 1080
         self.window_height = 720
         self.window_maximized = False
@@ -765,8 +751,35 @@ class Zapret2App(Gtk.Window):
                 self.start_engine()
             return False
 
-        GLib.timeout_add(1000, initial_kickoff)
-        GLib.timeout_add(3000, self._on_status_timer)
+        self._kickoff_timer_id = GLib.timeout_add(1000, initial_kickoff)
+        self._status_timer_id = GLib.timeout_add(3000, self._on_status_timer)
+
+    def destroy(self):
+        for attr in (
+            "_kickoff_timer_id",
+            "_status_timer_id",
+            "_net_initial_timer_id",
+            "_net_periodic_timer_id",
+            "_probe_mirrors_timer_id",
+        ):
+            tid = getattr(self, attr, None)
+            if tid and isinstance(tid, int):
+                try:
+                    GLib.source_remove(tid)
+                except Exception:
+                    pass
+                setattr(self, attr, None)
+        if hasattr(self, "mirror_monitor"):
+            try:
+                self.mirror_monitor.stop()
+            except Exception:
+                pass
+        if hasattr(self, "healer"):
+            try:
+                self.healer.stop()
+            except Exception:
+                pass
+        super().destroy()
 
     def _on_status_timer(self):
         self.refresh_status()
@@ -778,7 +791,11 @@ class Zapret2App(Gtk.Window):
             loaded_preset = cfg.get("preset", self.active_preset)
             self.active_preset = loaded_preset if loaded_preset in PRESETS else "general"
             loaded_dns = cfg.get("dns", self.active_dns)
-            self.active_dns = loaded_dns if loaded_dns in DNS_SERVERS else "cloudflare"
+            if loaded_dns in ENGINE_SUPPORTED_DNS:
+                self.active_dns = loaded_dns
+            else:
+                logger.warning("DNS provider '%s' is not supported by engine.sh; falling back to cloudflare", loaded_dns)
+                self.active_dns = "cloudflare"
             self.active_iface = cfg.get("iface", self.active_iface)
             self.enable_ai_hosts = cfg.get("enable_ai_hosts", self.enable_ai_hosts)
             self.dpi_auto = cfg.get("dpi_auto", self.dpi_auto)
@@ -1629,8 +1646,8 @@ class Zapret2App(Gtk.Window):
         card3.pack_start(self.lbl_nft_status, False, False, 0)
         vbox.pack_start(card3, False, False, 0)
 
-        GLib.timeout_add(500, self.refresh_network_monitor)
-        GLib.timeout_add_seconds(10, self._on_network_periodic_timer)
+        self._net_initial_timer_id = GLib.timeout_add(500, self.refresh_network_monitor)
+        self._net_periodic_timer_id = GLib.timeout_add_seconds(10, self._on_network_periodic_timer)
         return page
 
     def _on_network_periodic_timer(self):
@@ -1711,18 +1728,64 @@ class Zapret2App(Gtk.Window):
             "Выбор защищенного DoT резолвера с защитой от подмены ответов провайдером"
         )
 
+        # Action Buttons Bar
+        btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+
+        self.btn_probe_dns = Gtk.Button(label="⚡ Замерить задержки")
+        self.btn_probe_dns.get_style_context().add_class("fluent-btn-primary")
+        self.btn_probe_dns.connect("clicked", self.on_probe_dns_clicked)
+        btn_box.pack_start(self.btn_probe_dns, False, False, 0)
+
+        self.btn_apply_dns = Gtk.Button(label="💾 Применить DNS")
+        self.btn_apply_dns.get_style_context().add_class("fluent-btn-secondary")
+        self.btn_apply_dns.connect("clicked", self.on_apply_dns_clicked)
+        btn_box.pack_start(self.btn_apply_dns, False, False, 0)
+
+        self.btn_test_dns = Gtk.Button(label="🔍 Проверить DoT резолвинг")
+        self.btn_test_dns.get_style_context().add_class("fluent-btn-secondary")
+        self.btn_test_dns.connect("clicked", self.on_test_dns)
+        btn_box.pack_start(self.btn_test_dns, False, False, 0)
+
+        self.lbl_dns_probe_status = Gtk.Label(label="")
+        self.lbl_dns_probe_status.get_style_context().add_class("page-subtitle")
+        self.lbl_dns_probe_status.set_xalign(0)
+        btn_box.pack_start(self.lbl_dns_probe_status, True, True, 0)
+
+        vbox.pack_start(btn_box, False, False, 4)
+
+        # Scrolled container for DNS provider cards
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroller.set_min_content_height(380)
+
+        self.dns_cards_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        scroller.add(self.dns_cards_box)
+        vbox.pack_start(scroller, True, True, 4)
+
         self.dns_radios = {}
+        self.dns_cards = {}
+        self.dns_rtt_labels = {}
+        self.dns_rtt_values = {}
         first_radio = None
 
-        for key, d in DNS_SERVERS.items():
+        providers = list_providers(include_system=True)
+
+        for prov in providers:
+            key = prov.id
+            is_supported = prov.id in ENGINE_SUPPORTED_DNS
+
             card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
             card.get_style_context().add_class("fluent-card")
 
             radio = Gtk.RadioButton(group=first_radio)
-            if first_radio is None:
+            if first_radio is None and is_supported:
                 first_radio = radio
-            if key == self.active_dns:
+
+            if not is_supported:
+                radio.set_sensitive(False)
+            elif key == self.active_dns:
                 radio.set_active(True)
+
             radio.set_valign(Gtk.Align.CENTER)
             radio.connect("toggled", self.on_dns_radio_toggled, key)
             self.dns_radios[key] = radio
@@ -1730,46 +1793,127 @@ class Zapret2App(Gtk.Window):
 
             c_info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
             h_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            t = Gtk.Label(label=f"<b>{GLib.markup_escape_text(d['title'])}</b>")
+
+            t = Gtk.Label(label=f"<b>{GLib.markup_escape_text(prov.name)}</b>")
             t.set_use_markup(True)
             t.set_xalign(0)
             h_box.pack_start(t, False, False, 0)
 
-            badge = Gtk.Label(label=d["badge"])
-            badge.get_style_context().add_class("badge-accent")
-            h_box.pack_start(badge, False, False, 0)
+            if prov.badge:
+                badge = Gtk.Label(label=prov.badge)
+                badge.get_style_context().add_class("badge-accent")
+                h_box.pack_start(badge, False, False, 0)
+
+            if not is_supported:
+                sup_badge = Gtk.Label(label="не поддерживается движком")
+                sup_badge.get_style_context().add_class("badge-bad")
+                h_box.pack_start(sup_badge, False, False, 0)
+
+            rtt_lbl = Gtk.Label(label="-- мс")
+            rtt_lbl.get_style_context().add_class("badge-neutral")
+            self.dns_rtt_labels[key] = rtt_lbl
+            h_box.pack_start(rtt_lbl, False, False, 0)
+
             c_info.pack_start(h_box, False, False, 0)
 
-            desc_lbl = Gtk.Label(label=d["desc"])
+            desc_text = prov.description
+            if not is_supported:
+                desc_text += " [Доступен для DoH/DoT замеров, но не поддерживается engine.sh]"
+            desc_lbl = Gtk.Label(label=desc_text)
             desc_lbl.get_style_context().add_class("page-subtitle")
             desc_lbl.set_xalign(0)
+            desc_lbl.set_line_wrap(True)
             c_info.pack_start(desc_lbl, False, False, 0)
 
             card.pack_start(c_info, True, True, 0)
-            vbox.pack_start(card, False, False, 0)
-
-        # Apply & Test DNS Buttons
-        btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        btn_apply = Gtk.Button(label="💾 Применить DNS")
-        btn_apply.get_style_context().add_class("fluent-btn-primary")
-        btn_apply.connect("clicked", lambda _: self.restart_engine())
-        btn_box.pack_start(btn_apply, False, False, 0)
-
-        btn_test = Gtk.Button(label="🔍 Проверить DoT резолвинг")
-        btn_test.get_style_context().add_class("fluent-btn-secondary")
-        btn_test.connect("clicked", self.on_test_dns)
-        btn_box.pack_start(btn_test, False, False, 0)
-        vbox.pack_start(btn_box, False, False, 8)
+            self.dns_cards[key] = card
+            self.dns_cards_box.pack_start(card, False, False, 0)
 
         return page
 
+    def on_probe_dns_clicked(self, _):
+        self.btn_probe_dns.set_sensitive(False)
+        self.btn_probe_dns.set_label("⏳ Замер задержек...")
+        if hasattr(self, "lbl_dns_probe_status"):
+            self.lbl_dns_probe_status.set_text("Выполняется параллельный замер RTT до резолверов...")
+
+        def worker():
+            try:
+                results = probe_all_rtt()
+            except Exception as exc:
+                logger.error("probe_all_rtt error: %s", exc)
+                results = {}
+            GLib.idle_add(self._on_probe_dns_completed, results)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_probe_dns_completed(self, results):
+        if hasattr(self, "btn_probe_dns"):
+            self.btn_probe_dns.set_sensitive(True)
+            self.btn_probe_dns.set_label("⚡ Замерить задержки")
+
+        self.dns_rtt_values.update(results)
+
+        for key, rtt in results.items():
+            lbl = self.dns_rtt_labels.get(key)
+            if not lbl:
+                continue
+            for cls in ["badge-neutral", "badge-ok", "badge-warn", "badge-bad"]:
+                lbl.get_style_context().remove_class(cls)
+
+            if rtt is not None:
+                lbl.set_text(f"{rtt:.1f} мс")
+                if rtt < 60:
+                    lbl.get_style_context().add_class("badge-ok")
+                elif rtt < 150:
+                    lbl.get_style_context().add_class("badge-warn")
+                else:
+                    lbl.get_style_context().add_class("badge-bad")
+            else:
+                lbl.set_text("Недоступен")
+                lbl.get_style_context().add_class("badge-bad")
+
+        # Sort cards: supported first, then by RTT ascending (timeouts/unreachables last)
+        def sort_key(pid):
+            is_sup = pid in ENGINE_SUPPORTED_DNS
+            rtt = self.dns_rtt_values.get(pid)
+            sup_rank = 0 if is_sup else 1
+            rtt_rank = (0, rtt) if rtt is not None else (1, 999999.0)
+            return (sup_rank, rtt_rank)
+
+        sorted_keys = sorted(self.dns_cards.keys(), key=sort_key)
+        for idx, key in enumerate(sorted_keys):
+            card = self.dns_cards.get(key)
+            if card:
+                self.dns_cards_box.reorder_child(card, idx)
+
+        if hasattr(self, "lbl_dns_probe_status"):
+            self.lbl_dns_probe_status.set_text("Замер завершен. Список отсортирован по минимальной задержке.")
+
+    def on_apply_dns_clicked(self, _):
+        if self.is_running:
+            self.restart_engine()
+        else:
+            def worker():
+                res = run_engine("dns", self.active_iface, self.active_dns)
+                if res.returncode == 0:
+                    GLib.idle_add(self.show_dialog, "DNS применён", f"DNS '{self.active_dns}' успешно настроен в системе.")
+                else:
+                    err = res.stderr or res.stdout
+                    GLib.idle_add(self.show_dialog, "Ошибка настройки DNS", f"Не удалось применить DNS:\n{err}")
+            threading.Thread(target=worker, daemon=True).start()
+
     def on_dns_radio_toggled(self, radio, key):
         if radio.get_active():
+            if key not in ENGINE_SUPPORTED_DNS:
+                logger.warning("Attempted to select unsupported DNS provider '%s'", key)
+                return
             self.active_dns = key
+            title = DNS_SERVERS.get(key, {}).get("title", key).split("(")[0].strip()
             if hasattr(self, "top_tile_dns"):
-                self.top_tile_dns.set_text(DNS_SERVERS[key]["title"].split("(")[0].strip())
+                self.top_tile_dns.set_text(title)
             if hasattr(self, "pill_dns"):
-                self.pill_dns.set_text(f"🌐 {DNS_SERVERS[key]['title'].split('(')[0].strip()}")
+                self.pill_dns.set_text(f"🌐 {title}")
             self.save_config()
 
     def on_test_dns(self, _):
@@ -1807,25 +1951,47 @@ class Zapret2App(Gtk.Window):
         master_card.pack_end(self.sw_ai_master, False, False, 0)
         vbox.pack_start(master_card, False, False, 0)
 
+        # Syntax Explanatory Card for !domain
+        syn_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        syn_card.get_style_context().add_class("fluent-card")
+        syn_title = Gtk.Label(label="<b>Синтаксис списков доменов и правил исключения (!домен):</b>")
+        syn_title.set_use_markup(True)
+        syn_title.set_xalign(0)
+        syn_card.pack_start(syn_title, False, False, 0)
+
+        syn_desc = Gtk.Label(
+            label="• <b>домен.com</b> — добавить домен в список обхода DPI.\n"
+                  "• <b>!домен.com</b> — <b>безусловное исключение</b>: удаляет домен и <b>все его поддомены</b> (*.домен.com) из обхода DPI и переносит в exclude.\n"
+                  "• Строки, начинающиеся с # или ;, считаются комментариями и не изменяются."
+        )
+        syn_desc.set_use_markup(True)
+        syn_desc.set_xalign(0)
+        syn_desc.get_style_context().add_class("page-subtitle")
+        syn_card.pack_start(syn_desc, False, False, 0)
+        vbox.pack_start(syn_card, False, False, 0)
+
         # File Selector Bar
         file_sel_card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         file_sel_card.get_style_context().add_class("fluent-card")
         file_sel_card.pack_start(Gtk.Label(label="<b>Выберите файл:</b>", use_markup=True), False, False, 0)
 
+        base_dir = getattr(self, "app_dir", APP_DIR)
         self.hosts_files = {
-            "hosts": os.path.join(APP_DIR, "hosts.txt"),
-            "badsum": os.path.join(APP_DIR, "badsum_hosts.txt"),
-            "exclude": os.path.join(APP_DIR, "exclude.txt"),
-            "general": os.path.join(APP_DIR, "list-general.txt"),
-            "custom": os.path.join(APP_DIR, "custom_hosts.txt")
+            "custom": os.path.join(base_dir, "custom_hosts.txt"),
+            "exclude": os.path.join(base_dir, "exclude.txt"),
+            "autohostlist": os.path.join(base_dir, "lists", "autohostlist.txt"),
+            "general": os.path.join(base_dir, "list-general.txt"),
+            "hosts": os.path.join(base_dir, "hosts.txt"),
+            "badsum": os.path.join(base_dir, "badsum_hosts.txt"),
         }
 
         self.combo_file = Gtk.ComboBoxText()
-        self.combo_file.append("custom", "custom_hosts.txt (Свои домены, сохраняются при обновлении)")
+        self.combo_file.append("custom", "custom_hosts.txt (Свои домены, поддерживает !домен)")
+        self.combo_file.append("exclude", "exclude.txt (Исключения из обхода DPI)")
+        self.combo_file.append("autohostlist", "lists/autohostlist.txt (Автоматически обнаруженные хосты)")
+        self.combo_file.append("general", "list-general.txt (Базовый список, заменяется обновлением)")
         self.combo_file.append("hosts", "hosts.txt (База Smart Proxy для ИИ и сайтов)")
         self.combo_file.append("badsum", "badsum_hosts.txt (Хосты с badsum fooling)")
-        self.combo_file.append("exclude", "exclude.txt (Исключения из обхода DPI)")
-        self.combo_file.append("general", "list-general.txt (Базовый список, заменяется обновлением)")
         self.combo_file.set_active_id("custom")
         self.combo_file.connect("changed", self.on_hosts_file_changed)
         file_sel_card.pack_start(self.combo_file, True, True, 0)
@@ -1856,6 +2022,11 @@ class Zapret2App(Gtk.Window):
         btn_save.connect("clicked", lambda _: self.save_hosts_file_content())
         btn_box.pack_start(btn_save, False, False, 0)
 
+        btn_compile = Gtk.Button(label="⚡ Проверить компиляцию (!домен)")
+        btn_compile.get_style_context().add_class("fluent-btn-secondary")
+        btn_compile.connect("clicked", self.on_compile_lists_clicked)
+        btn_box.pack_start(btn_compile, False, False, 0)
+
         btn_apply_hosts = Gtk.Button(label="🚀 Применить базу в /etc/hosts")
         btn_apply_hosts.get_style_context().add_class("fluent-btn-secondary")
         btn_apply_hosts.connect("clicked", lambda _: self.apply_hosts_now())
@@ -1877,11 +2048,36 @@ class Zapret2App(Gtk.Window):
         self.load_hosts_file_content()
         return page
 
+    def on_compile_lists_clicked(self, _):
+        try:
+            res = self.compile_effective_lists()
+            msg = (
+                f"Результат компиляции списков ListManager:\n\n"
+                f"• Включено в hostlist (обход): {res.total_included} доменов\n"
+                f"• Исключено в exclude (пропуск): {res.total_excluded} доменов\n"
+                f"• Вырезано по правилу '!домен' (включая поддомены): {len(res.overridden_by_exclusion)}\n"
+            )
+            if res.overridden_by_exclusion:
+                preview = ", ".join(res.overridden_by_exclusion[:8])
+                if len(res.overridden_by_exclusion) > 8:
+                    preview += "..."
+                msg += f"\nИсключённые домены/поддомены:\n{preview}"
+            self.show_dialog("Компиляция списков", msg)
+        except Exception as exc:
+            self.show_dialog("Ошибка компиляции", f"Не удалось скомпилировать списки:\n{exc}")
+
+    def compile_effective_lists(self):
+        base_dir = getattr(self, "app_dir", APP_DIR)
+        if not hasattr(self, "list_manager") or self.list_manager is None:
+            self.list_manager = ListManager(base_dir=base_dir)
+        self.list_manager.reload_all()
+        return self.list_manager.compile()
+
     def on_hosts_file_changed(self, _):
         self.load_hosts_file_content()
 
     def load_hosts_file_content(self):
-        k = self.combo_file.get_active_id() or "hosts"
+        k = self.combo_file.get_active_id() or "custom"
         fpath = self.hosts_files.get(k)
         if fpath and os.path.exists(fpath):
             try:
@@ -1894,7 +2090,7 @@ class Zapret2App(Gtk.Window):
             self.hosts_buffer.set_text(f"Файл {fpath} не существует.")
 
     def save_hosts_file_content(self):
-        k = self.combo_file.get_active_id() or "hosts"
+        k = self.combo_file.get_active_id() or "custom"
         fpath = self.hosts_files.get(k)
         if not fpath:
             return
@@ -1902,10 +2098,9 @@ class Zapret2App(Gtk.Window):
         end_iter = self.hosts_buffer.get_end_iter()
         text = self.hosts_buffer.get_text(start_iter, end_iter, False)
         try:
-            from hosts_manager import atomic_write, backup_hosts_file
-            backup_hosts_file(fpath)
-            atomic_write(fpath, text)
-            self.show_dialog("Сохранение", f"Файл {os.path.basename(fpath)} успешно сохранён (создан бэкап).")
+            from list_manager import atomic_write_text
+            atomic_write_text(fpath, text)
+            self.show_dialog("Сохранение", f"Файл {os.path.basename(fpath)} успешно сохранён.")
         except Exception as e:
             self.show_dialog("Ошибка", f"Не удалось сохранить файл: {e}")
 
