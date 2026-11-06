@@ -44,7 +44,7 @@
 | **Честный UI и асинхронность** | Асинхронные задачи Qt + проверка кодов | `run_engine_async` + `safe_idle` + AST-страж | 🟢 Есть | `main.py`, `tests/test_honest_ui.py` |
 | **Root-безопасность** | UAC elevation | Проверка владельца root в system mode, предупреждение в portable | 🟢 Есть | `engine.sh:validate_exec_target`, `main.py` |
 | **Редактор профилей пресета** | Включение/отключение `--skip`, редактирование | GtkSource 4 (optional fallback на TextView), номера строк, поиск/замена, `--skip`, dirty-state | 🟢 Есть | `zapret2_ui.py`, `zapret2_core.py` |
-| **Автоподбор пресетов** | Оркестратор по полному каталогу | Примитивный перебор 4 пресетов | 🟡 Частично | Будет заменён на полноценный `orchestra/` (Этап 4) |
+| **Автоподбор пресетов** | Оркестратор по полному каталогу | `orchestra/` подключён к `main.py:on_auto_preset_clicked`: стабильность 2 из 3, скоринг, JSONL-история, откат | 🟢 Есть | `orchestra/`, `main.py`, `tests/test_orchestrator.py`, `test_engine_contract.py` |
 | **Auto-Hostlist (сбор доменов)** | Встроенный перехват nfqws2 | `zapret2_core.py:get_auto_hostlist_domains` | 🟢 Есть | `zapret2_core.py`, `zapret2_ui.py` |
 | **Синхронизация и обновления** | Автообновление через GitHub/Forgejo | 4 зеркала (git2/git3/mos/flic), SHA256 | 🟢 Есть | `updater.py` |
 | **Health Check и автолечение** | Служба самовосстановления | Демон `healer.py` (реакция на NFQWS_ONLY, авторестарт) | 🟡 Частично | Доработка до строгого FSM в Этапе 4 |
@@ -151,6 +151,8 @@
   - Реализован пакет `orchestra/` (`orchestrator.py`, `targets.py`, `history.py`) для интеллектуального перебора пресетов с проверкой стабильности (2 из 3 успешных попыток) и ранжированием по скорингу `(ok_count, stable_ratio, -latency)`.
   - Безопасный автоматический откат к предыдущему рабочему пресету при тотальном сбое. Сохранение истории в JSONL.
   - Построен модуль `orchestra_ui.py`: виджет `OrchestraWidget` с живым `Gtk.ProgressBar`, таблицей результатов `Gtk.TreeView` (статусы по YouTube, Discord, Rutracker с latency), быстрой выборкой Top-10 и полным каталогом.
+  - Оркестратор интегрирован в `main.py:on_auto_preset_clicked` вместо примитивного перебора: движок применяется через `EngineParams`, пробы идут через `orchestra.targets.http_probe`, прогресс обновляется через `GLib.idle_add`, результат сохраняется в `~/.config/zapret-gui/autotune-history.jsonl`. Контрактные тесты обновлены: победитель всегда остаётся запущенным, повторное применение — только если он не тестировался последним.
+  - Виджет `orchestra_ui.py` пока является самостоятельным компонентом; его встройка в главное окно — отдельный шаг.
   - Мониторинг сети `NetworkManagerMonitor` через D-Bus с отказоустойчивым парсером `/proc/net/route` при отсутствии D-Bus/NM.
 - **Этап 5 (Диагностика и классификация ТСПУ):**
   - Разработан модуль `dpi_classifier.py` с детальным распознаванием типов блокировок: `DNS_SPOOFING`, `TCP_RST_INJECTION`, `TLS_SNI_DROP`, `HTTP_BLOCKPAGE` (302/451/HTML-сигнатуры), `QUIC_BLACKHOLE`, `PASS`.
@@ -162,6 +164,7 @@
 - **Этап 7 (Анализ журналов и безопасный Support Bundle):**
   - Модуль `log_analyzer.py` распознает 5 классов инцидентов (права доступа, conntrack overflow, ошибки правил nftables, сбои resolv.conf, краши демонов) и генерирует рекомендации на русском.
   - Модуль `support_bundle.py` собирает зашифрованный диагностический архив `.tar.gz` со 100% маскированием конфиденциальных данных (RFC 1918, внешние IPv4/IPv6, MAC-адреса, пути `/home/<user>`, токены).
+  - **Важно:** модули этапов 5–7 реализованы и покрыты тестами как самостоятельные библиотеки, но пока не подключены к кнопкам и страницам `main.py`. Подключение — следующий шаг, а не выполненная интеграция.
 - **Этап 10 (Упаковка и дистрибуция):**
   - Подготовлен `packaging/PKGBUILD` для Arch Linux / AUR, валидированный FreeDesktop `packaging/zapret-gui.desktop`, системный `packaging/zapret-gui.service`.
   - Разработаны скрипты `install.sh` и `uninstall.sh` с поддержкой системного и портативного режимов без root-прав. Все тесты валидации упаковки пройдены.

@@ -25,6 +25,7 @@ from updater import ZapretUpdater, get_update_meta, MirrorHealthMonitor
 from healer import get_healer, HEALER_LOG
 from zapret2_ui import Zapret2Page
 from catalog.preset_catalog import PresetCatalog
+from orchestra import Orchestrator, HistoryStore, http_probe, default_targets
 from version import __version__, APP_TITLE, APP_SUBTITLE, APP_DESCRIPTION
 from engine_params import EngineParams
 from status_presenter import StatusPresenter
@@ -2277,126 +2278,115 @@ class Zapret2App(Gtk.Window):
 
         is_zapret2 = getattr(self, "engine_mode", "nfqws2") == "nfqws2"
         if is_zapret2:
-            catalog = PresetCatalog.load_from_directory(os.path.join(APP_DIR, "zapret2", "presets", "winws2_builtin"))
+            catalog = PresetCatalog.load_from_directory(
+                os.path.join(APP_DIR, "zapret2", "presets", "winws2_builtin")
+            )
             candidate_presets = [p.family for p in catalog.get_top_recommended()]
         else:
             candidate_presets = ["general", "youtube_discord", "alt_fakedsplit", "alt_split", "multidisorder"]
+        previous_preset = self.zapret2_preset if is_zapret2 else self.active_preset
 
-        markers = [
-            ("youtube", "https://www.youtube.com/generate_204"),
-            ("googlevideo", "https://redirector.googlevideo.com/report_mapping"),
-            ("discord", "https://discord.com/api/v10/gateway"),
-            ("rutracker", "https://rutracker.org"),
-        ]
+        def apply_preset(preset_id):
+            params = EngineParams.from_app(self)
+            if is_zapret2:
+                params.engine_mode = "nfqws2"
+                params.zapret2_preset = preset_id
+            else:
+                params.engine_mode = "nfqws"
+                params.preset = preset_id
+            result = run_engine(*params.to_argv("start"))
+            return getattr(result, "returncode", 0) == 0
 
-        def test_marker(url, key):
-            t0 = time.time()
-            try:
-                req = urllib.request.Request(
-                    url,
-                    headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"}
-                )
-                with urllib.request.urlopen(req, timeout=3.5) as res:
-                    st = res.status
-                    dt = int((time.time() - t0) * 1000)
-                    if 200 <= st < 400:
-                        return True, dt
-                    return False, dt
-            except urllib.error.HTTPError as e:
-                dt = int((time.time() - t0) * 1000)
-                # Any HTTP response code < 500 confirms successful TLS handshake and origin reachability
-                if e.code < 500:
-                    return True, dt
-                return False, dt
-            except Exception:
-                return False, 9999
+        def notify(done, total, preset_id, best):
+            label = preset_id if is_zapret2 else PRESETS.get(preset_id, {}).get("title", preset_id).split("(")[0].strip()
+            text = f"⏳ {done}/{total}: {label}"
+            if best is not None and best.ok_count:
+                text += f" · лидер {best.preset_id} ({best.ok_count}/{best.total_targets})"
+            GLib.idle_add(self.btn_auto_preset.set_label, text)
+
+        orchestrator = Orchestrator(
+            apply_preset=apply_preset,
+            probe=http_probe,
+            targets=default_targets(),
+            attempts=3,
+            required_successes=2,
+            settle_s=1.2,
+            history=HistoryStore(os.path.join(os.path.dirname(CONFIG_FILE), "autotune-history.jsonl")),
+            on_progress=notify,
+            sleep_fn=time.sleep,
+            time_fn=time.time,
+        )
 
         def worker():
-            results = {}
-            for preset in candidate_presets:
-                from engine_params import EngineParams
+            outcome = orchestrator.run(candidate_presets, previous_preset=previous_preset)
+            best_id = outcome.winner
+
+            if best_id:
                 if is_zapret2:
-                    p_title = preset
-                    GLib.idle_add(self.btn_auto_preset.set_label, f"⏳ Тест: {p_title}...")
-                    p_args = EngineParams.from_app(self)
-                    p_args.engine_mode = "nfqws2"
-                    p_args.zapret2_preset = preset
-                    run_engine(*p_args.to_argv("start"))
+                    self.zapret2_preset = best_id
+                    self.engine_mode = "nfqws2"
+                    best_title = best_id
                 else:
-                    p_title = PRESETS.get(preset, {}).get("title", preset).split("(")[0].strip()
-                    GLib.idle_add(self.btn_auto_preset.set_label, f"⏳ Тест: {p_title}...")
-                    p_args = EngineParams.from_app(self)
-                    p_args.engine_mode = "nfqws"
-                    p_args.preset = preset
-                    run_engine(*p_args.to_argv("start"))
-                time.sleep(1.2)
+                    self.active_preset = best_id
+                    self.engine_mode = "nfqws"
+                    best_title = PRESETS.get(best_id, {}).get("title", best_id)
 
-                ok_count = 0
-                latencies = []
-                for key, url in markers:
-                    ok, lat = test_marker(url, key)
-                    if ok:
-                        ok_count += 1
-                        latencies.append(lat)
+                self.save_config()
 
-                avg_lat = int(sum(latencies) / len(latencies)) if latencies else 9999
-                results[preset] = {
-                    "ok_count": ok_count,
-                    "avg_lat": avg_lat
-                }
-
-            best_preset = max(
-                candidate_presets,
-                key=lambda p: (results[p]["ok_count"], -results[p]["avg_lat"])
-            )
-
-            if is_zapret2:
-                self.zapret2_preset = best_preset
-                self.engine_mode = "nfqws2"
-                best_title = best_preset
+                report_lines = [
+                    f"🏆 Выбран лучший пресет: {best_title}",
+                    f"Стабильно доступно сервисов: {outcome.best.ok_count}/{outcome.best.total_targets}, "
+                    f"ср. задержка: {outcome.best.avg_latency_ms} ms\n",
+                    "Сводка по всем протестированным стратегиям:",
+                ]
+                for res in outcome.results:
+                    icon = "⭐" if res.preset_id == best_id else "•"
+                    label = res.preset_id if is_zapret2 else PRESETS.get(res.preset_id, {}).get("title", res.preset_id)
+                    report_lines.append(
+                        f"{icon} {label}: {res.ok_count}/{res.total_targets} стабильно "
+                        f"(ср. пинг {res.avg_latency_ms} ms)"
+                    )
+                if outcome.stopped:
+                    report_lines.append("\n⏹ Подбор остановлен пользователем.")
+                elif outcome.reason == "budget":
+                    report_lines.append("\n⏱ Лимит времени исчерпан, перебор не завершён.")
             else:
-                self.active_preset = best_preset
-                self.engine_mode = "nfqws"
-                best_title = PRESETS.get(best_preset, {}).get("title", best_preset)
-
-            self.save_config()
-            run_engine(*self.engine_command())
-
-            report_lines = [
-                f"🏆 Выбран лучший пресет: {best_title}",
-                f"Доступно сервисов: {results[best_preset]['ok_count']}/{len(markers)}, ср. задержка: {results[best_preset]['avg_lat']} ms\n",
-                "Сводка по всем протестированным стратегиям:"
-            ]
-            for p in candidate_presets:
-                res = results[p]
-                icon = "⭐" if p == best_preset else "•"
-                p_label = p if is_zapret2 else PRESETS.get(p, {}).get("title", p)
-                report_lines.append(f"{icon} {p_label}: {res['ok_count']}/{len(markers)} доступно (ср. пинг {res['avg_lat']} ms)")
+                report_lines = ["❌ Ни один пресет не прошёл стабильную проверку (2 из 3 попыток)."]
+                if outcome.rolled_back:
+                    report_lines.append(f"↩ Движок возвращён к предыдущему пресету: {previous_preset}")
+                else:
+                    report_lines.append("Движок оставлен в текущем состоянии.")
+                for res in outcome.results:
+                    detail = res.error or f"{res.ok_count}/{res.total_targets} стабильно"
+                    report_lines.append(f"• {res.preset_id}: {detail}")
 
             def finish():
                 self.btn_auto_preset.set_sensitive(True)
                 self.btn_run_check.set_sensitive(True)
                 self.btn_auto_preset.set_label("⚡ Автоподбор лучшего пресета")
 
-                if is_zapret2:
-                    if hasattr(self, "top_tile_preset"):
-                        self.top_tile_preset.set_text(best_preset)
-                    if hasattr(self, "pill_preset"):
-                        self.pill_preset.set_text(f"⚡ {best_preset}")
-                    if hasattr(self, "combo_engine_mode"):
-                        self.combo_engine_mode.set_active_id("nfqws2")
-                    if hasattr(self, "zapret2_page") and self.zapret2_page:
-                        self.zapret2_page.preset_id = best_preset
-                        self.zapret2_page.refresh_catalog()
-                else:
-                    if hasattr(self, "preset_radios") and best_preset in self.preset_radios:
-                        self.preset_radios[best_preset].set_active(True)
-                    if hasattr(self, "top_tile_preset"):
-                        self.top_tile_preset.set_text(PRESETS.get(best_preset, {}).get("title", best_preset).split("(")[0].strip())
-                    if hasattr(self, "pill_preset"):
-                        self.pill_preset.set_text(f"⚡ {PRESETS.get(best_preset, {}).get('title', best_preset)}")
-                    if hasattr(self, "combo_engine_mode"):
-                        self.combo_engine_mode.set_active_id("nfqws")
+                if best_id:
+                    if is_zapret2:
+                        if hasattr(self, "top_tile_preset"):
+                            self.top_tile_preset.set_text(best_id)
+                        if hasattr(self, "pill_preset"):
+                            self.pill_preset.set_text(f"⚡ {best_id}")
+                        if hasattr(self, "combo_engine_mode"):
+                            self.combo_engine_mode.set_active_id("nfqws2")
+                        if hasattr(self, "zapret2_page") and self.zapret2_page:
+                            self.zapret2_page.preset_id = best_id
+                            self.zapret2_page.refresh_catalog()
+                    else:
+                        if hasattr(self, "preset_radios") and best_id in self.preset_radios:
+                            self.preset_radios[best_id].set_active(True)
+                        if hasattr(self, "top_tile_preset"):
+                            self.top_tile_preset.set_text(
+                                PRESETS.get(best_id, {}).get("title", best_id).split("(")[0].strip()
+                            )
+                        if hasattr(self, "pill_preset"):
+                            self.pill_preset.set_text(f"⚡ {PRESETS.get(best_id, {}).get('title', best_id)}")
+                        if hasattr(self, "combo_engine_mode"):
+                            self.combo_engine_mode.set_active_id("nfqws")
 
                 self.update_top_tile_mode()
                 self.refresh_status()

@@ -113,6 +113,7 @@ def test_auto_preset_nfqws2_candidates_and_mode_preservation(monkeypatch):
     monkeypatch.setattr(main.time, "sleep", lambda s: None)
     monkeypatch.setattr(main.GLib, "idle_add", lambda func, *args, **kwargs: func(*args, **kwargs))
     monkeypatch.setattr(main, "run_engine", lambda *args: captured_runs.append(args) or SimpleNamespace(returncode=0, stdout="", stderr=""))
+    monkeypatch.setattr(main, "HistoryStore", lambda *a, **k: SimpleNamespace(append=lambda record: None))
 
     requested_urls = []
 
@@ -137,14 +138,20 @@ def test_auto_preset_nfqws2_candidates_and_mode_preservation(monkeypatch):
         "general FAKE TLS AUTO",
         "ALL TCP & UDP hostfakesplit",
     ]
-    # 4 candidates tested + 1 final engine start
-    assert len(captured_runs) == 5
+    # Every candidate is applied once. The orchestrator re-applies the winner
+    # only when it was not the last candidate tested.
+    assert len(captured_runs) in (len(expected_candidates), len(expected_candidates) + 1)
 
     for i, candidate in enumerate(expected_candidates):
         call_args = captured_runs[i]
         assert call_args[0] == "start"
         assert call_args[9] == "nfqws2"
         assert call_args[11] == candidate
+
+    # The engine always ends up running the winning preset.
+    assert captured_runs[-1][0] == "start"
+    assert captured_runs[-1][9] == "nfqws2"
+    assert captured_runs[-1][11] == app.zapret2_preset
 
     # Zapret2 engine_mode must NOT be changed to nfqws!
     assert app.engine_mode == "nfqws2"
@@ -168,6 +175,7 @@ def test_auto_preset_nfqws_mode(monkeypatch):
     monkeypatch.setattr(main.time, "sleep", lambda s: None)
     monkeypatch.setattr(main.GLib, "idle_add", lambda func, *args, **kwargs: func(*args, **kwargs))
     monkeypatch.setattr(main, "run_engine", lambda *args: captured_runs.append(args) or SimpleNamespace(returncode=0, stdout="", stderr=""))
+    monkeypatch.setattr(main, "HistoryStore", lambda *a, **k: SimpleNamespace(append=lambda record: None))
 
     class DummyResp:
         def __init__(self, url):
@@ -182,10 +190,13 @@ def test_auto_preset_nfqws_mode(monkeypatch):
     Zapret2App.on_auto_preset_clicked(app, None)
 
     assert app.engine_mode == "nfqws"
-    # 5 nfqws candidates tested + 1 final engine start
-    assert len(captured_runs) == 6
+    # 5 nfqws candidates applied, plus the winner only if it was not tested last.
+    assert len(captured_runs) in (5, 6)
     assert captured_runs[0][9] == "nfqws"
     assert captured_runs[0][1] == "general"
+    assert captured_runs[-1][0] == "start"
+    assert captured_runs[-1][9] == "nfqws"
+    assert captured_runs[-1][1] == app.active_preset
 
 
 def test_auto_preset_markers(monkeypatch):
@@ -196,6 +207,7 @@ def test_auto_preset_markers(monkeypatch):
     monkeypatch.setattr(main.time, "sleep", lambda s: None)
     monkeypatch.setattr(main.GLib, "idle_add", lambda func, *args, **kwargs: func(*args, **kwargs))
     monkeypatch.setattr(main, "run_engine", lambda *args: SimpleNamespace(returncode=0, stdout="", stderr=""))
+    monkeypatch.setattr(main, "HistoryStore", lambda *a, **k: SimpleNamespace(append=lambda record: None))
 
     class DummyResp:
         def __init__(self, url):
