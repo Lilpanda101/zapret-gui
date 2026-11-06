@@ -50,11 +50,37 @@ wait_for_process_start() {
     local unit="$1"
     local pid_file="$2"
     local max_wait_sec="${3:-5}"
+    local expected_pattern="${4:-}"
     local step_ms=200
     local elapsed_ms=0
     local max_ms=$((max_wait_sec * 1000))
 
+    if [ -z "$expected_pattern" ]; then
+        case "$unit" in
+            *tpws*) expected_pattern="tpws" ;;
+            *nfqws2*|*zapret2*) expected_pattern="nfqws2|nfqws" ;;
+            *nfqws*) expected_pattern="nfqws" ;;
+            *) expected_pattern=".*" ;;
+        esac
+    fi
+
     while [ "$elapsed_ms" -lt "$max_ms" ]; do
+        # 1. First priority: Check pidfile if present and process is alive
+        if [ -s "$pid_file" ]; then
+            local fpid
+            fpid=$(cat "$pid_file" 2>/dev/null || true)
+            if [ -n "$fpid" ] && kill -0 "$fpid" 2>/dev/null; then
+                local fexe
+                fexe=$(readlink -f "/proc/$fpid/exe" 2>/dev/null || true)
+                local fcomm
+                fcomm=$(cat "/proc/$fpid/comm" 2>/dev/null || true)
+                if [ -z "$fexe" ] || [[ "$fexe" =~ ($expected_pattern) ]] || [[ "$fcomm" =~ ($expected_pattern) ]]; then
+                    return 0
+                fi
+            fi
+        fi
+
+        # 2. Second priority: Query systemd unit
         if systemctl is-active --quiet "$unit" 2>/dev/null; then
             local mpid
             mpid=$(systemctl show -p MainPID --value "$unit" 2>/dev/null || true)
@@ -64,16 +90,9 @@ wait_for_process_start() {
             fi
         fi
 
-        if systemctl is-failed --quiet "$unit" 2>/dev/null; then
+        # Abort only if unit is explicitly failed AND no valid pidfile is present
+        if systemctl is-failed --quiet "$unit" 2>/dev/null && [ ! -s "$pid_file" ]; then
             return 1
-        fi
-
-        if [ -s "$pid_file" ]; then
-            local fpid
-            fpid=$(cat "$pid_file" 2>/dev/null || true)
-            if [ -n "$fpid" ] && kill -0 "$fpid" 2>/dev/null; then
-                return 0
-            fi
         fi
 
         sleep 0.2
@@ -1213,51 +1232,53 @@ install_polkit() {
     echo "Polkit setup completed; legacy sudoers rule removed."
 }
 
-if [ "$1" != "status" ]; then
-    check_root
-fi
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    if [ "$1" != "status" ]; then
+        check_root
+    fi
 
-case "$1" in
-    start)
-        start_engine "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}" "${11}" "${12}" "${13}" "${14}" "${15}"
-        ;;
-    stop)
-        stop_engine "$2"
-        ;;
-    restart)
-        start_engine "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}" "${11}" "${12}" "${13}" "${14}" "${15}"
-        ;;
-    status)
-        status_engine
-        ;;
-    dns)
-        apply_dns "$2" "$3"
-        ;;
-    tune)
-        tune_network
-        ;;
-    hosts)
-        apply_ai_hosts "$2"
-        ;;
-    clean_hosts)
-        clean_ai_hosts
-        ;;
-    sync)
-        sync_bases
-        ;;
-    ip2net|build_ipset)
-        build_ipset
-        ;;
-    blockcheck2)
-        run_blockcheck2 "$2" "$3" "$4"
-        ;;
-    install_polkit)
-        install_polkit
-        ;;
-    *)
-        echo "Usage: $0 {start|stop|restart|status|dns|tune|hosts|clean_hosts|sync|ip2net|install_polkit|blockcheck2} [preset] [interface] [dns_provider] [enable_ai_hosts] [enable_quic] [enable_discord_voice] [conntrack_limit] [hostlist_mode] [engine_mode] [custom_params] [zapret2_preset] [enable_youtube] [enable_discord_tcp] [enable_general_https]"
-        exit 1
-        ;;
-esac
+    case "$1" in
+        start)
+            start_engine "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}" "${11}" "${12}" "${13}" "${14}" "${15}"
+            ;;
+        stop)
+            stop_engine "$2"
+            ;;
+        restart)
+            start_engine "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}" "${11}" "${12}" "${13}" "${14}" "${15}"
+            ;;
+        status)
+            status_engine
+            ;;
+        dns)
+            apply_dns "$2" "$3"
+            ;;
+        tune)
+            tune_network
+            ;;
+        hosts)
+            apply_ai_hosts "$2"
+            ;;
+        clean_hosts)
+            clean_ai_hosts
+            ;;
+        sync)
+            sync_bases
+            ;;
+        ip2net|build_ipset)
+            build_ipset
+            ;;
+        blockcheck2)
+            run_blockcheck2 "$2" "$3" "$4"
+            ;;
+        install_polkit)
+            install_polkit
+            ;;
+        *)
+            echo "Usage: $0 {start|stop|restart|status|dns|tune|hosts|clean_hosts|sync|ip2net|install_polkit|blockcheck2} [preset] [interface] [dns_provider] [enable_ai_hosts] [enable_quic] [enable_discord_voice] [conntrack_limit] [hostlist_mode] [engine_mode] [custom_params] [zapret2_preset] [enable_youtube] [enable_discord_tcp] [enable_general_https]"
+            exit 1
+            ;;
+    esac
+fi
 
 
