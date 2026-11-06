@@ -65,6 +65,14 @@ python3 -m py_compile main.py updater.py healer.py zapret2_core.py zapret2_ui.py
 python3 main.py --version
 ```
 
+## Зависимости
+
+- **Обязательные:** Python 3.10+, `python-gobject`, `gtk3`, `nftables`, `polkit`, `systemd`.
+- **Движки обхода:** `zapret2` (`/usr/bin/nfqws2`), `zapret` (`nfqws`), `tpws`.
+- **Опциональные:**
+  - `gtksourceview4` — номера строк и расширенный редактор пресетов (при отсутствии используется стандартный `Gtk.TextView`).
+  - `libayatana-appindicator` / `libappindicator-gtk3` — отображение иконки в системном трее (при отсутствии приложение работает с панелью задач).
+
 ## Лицензия и происхождение
 
 Проект распространяется под лицензией [MIT](LICENSE).

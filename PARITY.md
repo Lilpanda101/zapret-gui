@@ -43,7 +43,7 @@
 | **Схема и миграция конфига** | JSON схема с миграциями | Схема v2, sanitization, persistent tray switch | 🟢 Есть | `config_manager.py`, `tests/test_config_migration.py` |
 | **Честный UI и асинхронность** | Асинхронные задачи Qt + проверка кодов | `run_engine_async` + `safe_idle` + AST-страж | 🟢 Есть | `main.py`, `tests/test_honest_ui.py` |
 | **Root-безопасность** | UAC elevation | Проверка владельца root в system mode, предупреждение в portable | 🟢 Есть | `engine.sh:validate_exec_target`, `main.py` |
-| **Редактор профилей пресета** | Включение/отключение `--skip`, редактирование | GtkSource 4, номера строк, поиск/замена, `--skip`, dirty-state | 🟢 Есть | `zapret2_ui.py`, `zapret2_core.py` |
+| **Редактор профилей пресета** | Включение/отключение `--skip`, редактирование | GtkSource 4 (optional fallback на TextView), номера строк, поиск/замена, `--skip`, dirty-state | 🟢 Есть | `zapret2_ui.py`, `zapret2_core.py` |
 | **Автоподбор пресетов** | Оркестратор по полному каталогу | Примитивный перебор 4 пресетов | 🟡 Частично | Будет заменён на полноценный `orchestra/` (Этап 4) |
 | **Auto-Hostlist (сбор доменов)** | Встроенный перехват nfqws2 | `zapret2_core.py:get_auto_hostlist_domains` | 🟢 Есть | `zapret2_core.py`, `zapret2_ui.py` |
 | **Синхронизация и обновления** | Автообновление через GitHub/Forgejo | 4 зеркала (git2/git3/mos/flic), SHA256 | 🟢 Есть | `updater.py` |

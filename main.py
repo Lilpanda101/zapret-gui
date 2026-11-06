@@ -27,6 +27,11 @@ from zapret2_ui import Zapret2Page
 from catalog.preset_catalog import PresetCatalog
 from version import __version__, APP_TITLE, APP_SUBTITLE, APP_DESCRIPTION
 from engine_params import EngineParams
+from status_presenter import StatusPresenter
+from app_shell import (
+    create_page_container as shell_create_page_container,
+    create_setting_row as shell_create_setting_row,
+)
 from config_manager import (
     CONFIG_VERSION,
     load_config_from_file,
@@ -610,6 +615,7 @@ class Zapret2App(Gtk.Window):
         self.set_position(Gtk.WindowPosition.CENTER)
         self.set_icon_name("network-vpn")
         self.minimized = minimized
+        self.status_presenter = StatusPresenter(self)
 
         # State
         self.active_preset = "general"
@@ -775,32 +781,7 @@ class Zapret2App(Gtk.Window):
 
     def create_page_container(self, title_text, subtitle_text):
         """Creates a scrolled page with a constrained, centered content width for ultrawide displays."""
-        scrolled = Gtk.ScrolledWindow()
-        scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-
-        outer_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        outer_box.set_halign(Gtk.Align.CENTER)
-        outer_box.set_hexpand(True)
-        outer_box.set_size_request(920, -1)
-        outer_box.set_margin_top(22)
-        outer_box.set_margin_bottom(24)
-        outer_box.set_margin_start(32)
-        outer_box.set_margin_end(32)
-        outer_box.get_style_context().add_class("content-wrapper")
-
-        t_lbl = Gtk.Label(label=title_text)
-        t_lbl.get_style_context().add_class("page-title")
-        t_lbl.set_xalign(0)
-        outer_box.pack_start(t_lbl, False, False, 0)
-
-        if subtitle_text:
-            s_lbl = Gtk.Label(label=subtitle_text)
-            s_lbl.get_style_context().add_class("page-subtitle")
-            s_lbl.set_xalign(0)
-            outer_box.pack_start(s_lbl, False, False, 0)
-
-        scrolled.add(outer_box)
-        return scrolled, outer_box
+        return shell_create_page_container(title_text, subtitle_text)
 
     def create_sidebar(self):
         sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
@@ -1114,32 +1095,7 @@ class Zapret2App(Gtk.Window):
 
     def create_setting_row(self, icon_str, title_text, desc_text, control_widget):
         """Creates a modern Windows 11 style setting row."""
-        row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        row_box.get_style_context().add_class("fluent-setting-row")
-
-        # Icon
-        icon_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        icon_box.get_style_context().add_class("setting-icon-box")
-        lbl_icon = Gtk.Label()
-        lbl_icon.set_markup(f"<span font='14'>{icon_str}</span>")
-        icon_box.pack_start(lbl_icon, True, True, 0)
-        row_box.pack_start(icon_box, False, False, 0)
-
-        # Title & Description
-        txt_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        lbl_title = Gtk.Label(label=f"<b>{GLib.markup_escape_text(title_text)}</b>", use_markup=True, xalign=0)
-        lbl_desc = Gtk.Label(label=desc_text, xalign=0)
-        lbl_desc.get_style_context().add_class("page-subtitle")
-        txt_box.pack_start(lbl_title, False, False, 0)
-        txt_box.pack_start(lbl_desc, False, False, 0)
-        row_box.pack_start(txt_box, True, True, 0)
-
-        # Control widget (Switch, Combo, etc.) aligned to end
-        control_widget.set_halign(Gtk.Align.END)
-        control_widget.set_valign(Gtk.Align.CENTER)
-        row_box.pack_end(control_widget, False, False, 0)
-
-        return row_box
+        return shell_create_setting_row(icon_str, title_text, desc_text, control_widget)
 
     # ================= PAGE 2: PRESETS =================
     def create_presets_page(self):
@@ -2557,56 +2513,7 @@ class Zapret2App(Gtk.Window):
         return False
 
     def _apply_status(self, out):
-        if out == "ACTIVE":
-            self.is_running = True
-            mode_title = {"tpws": "TPWS", "nfqws2": "nfqws2 + Lua"}.get(self.engine_mode, "nfqws v1")
-            self.status_title.set_markup(f"<span font='15' weight='bold' color='#34d399'>🟢 Движок запущен ({mode_title})</span>")
-            self.status_desc.set_text("Процесс и правила перехвата активны. Доступность сервисов проверяется отдельно в диагностике.")
-            self.btn_toggle.set_label("■ Остановить обход")
-            self.btn_toggle.get_style_context().remove_class("fluent-btn-primary")
-            self.btn_toggle.get_style_context().add_class("fluent-btn-danger")
-
-            self.status_banner.get_style_context().remove_class("status-banner-inactive")
-            self.status_banner.get_style_context().add_class("status-banner-active")
-
-            self.pill_status.set_text("● Обход DPI активен")
-            self.pill_status.get_style_context().remove_class("badge-bad")
-            self.pill_status.get_style_context().remove_class("badge-warn")
-            self.pill_status.get_style_context().add_class("badge-ok")
-            self.update_tray(True)
-        elif out == "NFQWS_ONLY":
-            self.is_running = True
-            mode_title = {"tpws": "TPWS", "nfqws2": "nfqws2 + Lua"}.get(self.engine_mode, "nfqws v1")
-            self.status_title.set_markup(f"<span font='15' weight='bold' color='#f59e0b'>🟡 Движок запущен • Правила nftables отсутствуют ({mode_title})</span>")
-            self.status_desc.set_text("Процесс десинхронизатора активен, но правила перехвата трафика не найдены.")
-            self.btn_toggle.set_label("■ Остановить обход")
-            self.btn_toggle.get_style_context().remove_class("fluent-btn-primary")
-            self.btn_toggle.get_style_context().add_class("fluent-btn-danger")
-
-            self.status_banner.get_style_context().remove_class("status-banner-inactive")
-            self.status_banner.get_style_context().add_class("status-banner-active")
-
-            self.pill_status.set_text("● NFQWS без nftables")
-            self.pill_status.get_style_context().remove_class("badge-bad")
-            self.pill_status.get_style_context().remove_class("badge-ok")
-            self.pill_status.get_style_context().add_class("badge-warn")
-            self.update_tray(True)
-        else:
-            self.is_running = False
-            self.status_title.set_markup("<span font='15' weight='bold' color='#f87171'>○ Zapret остановлен • Обход выключен</span>")
-            self.status_desc.set_text("Нажмите «Запустить обход», чтобы включить десинхронизацию для YouTube и Discord.")
-            self.btn_toggle.set_label("▶ Запустить обход")
-            self.btn_toggle.get_style_context().remove_class("fluent-btn-danger")
-            self.btn_toggle.get_style_context().add_class("fluent-btn-primary")
-
-            self.status_banner.get_style_context().remove_class("status-banner-active")
-            self.status_banner.get_style_context().add_class("status-banner-inactive")
-
-            self.pill_status.set_text("○ Обход DPI выключен")
-            self.pill_status.get_style_context().remove_class("badge-ok")
-            self.pill_status.get_style_context().remove_class("badge-warn")
-            self.pill_status.get_style_context().add_class("badge-bad")
-            self.update_tray(False)
+        return self.status_presenter.apply(out)
 
     def on_iface_changed(self, combo):
         if self._syncing_iface:
