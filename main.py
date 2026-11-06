@@ -37,6 +37,19 @@ from config_manager import (
     load_config_from_file,
     save_config_to_file,
     migrate_config,
+    should_show_onboarding,
+    mark_onboarding_completed,
+)
+from onboarding import show_onboarding
+from persistent_bar import PersistentStatusBar, create_persistent_bar
+from tray_manager import TrayManager
+from theme_manager import ThemeManager, load_theme, get_theme_css, VALID_THEMES
+from window_state import (
+    save_window_state,
+    restore_window_state,
+    bind_window_geometry_events,
+    setup_window_shortcuts,
+    apply_a11y_tooltips,
 )
 
 AppIndicator = None
@@ -611,7 +624,15 @@ class Zapret2App(Gtk.Window):
     def __init__(self, minimized=False):
         super().__init__(title=APP_TITLE)
         self.is_system_mode = check_installation_security()
-        self.set_default_size(1080, 720)
+        self.window_width = 1080
+        self.window_height = 720
+        self.window_maximized = False
+        self.last_page = "dashboard"
+        self.theme = "dark"
+        self.theme_manager = ThemeManager(self.theme)
+        self.css_provider = None
+        self.has_tray = False
+        self.set_default_size(self.window_width, self.window_height)
         self.set_position(Gtk.WindowPosition.CENTER)
         self.set_icon_name("network-vpn")
         self.minimized = minimized
@@ -652,9 +673,20 @@ class Zapret2App(Gtk.Window):
 
         # Intercept window close to minimize to tray
         self.connect("delete-event", self.on_delete_event)
+        self.connect("key-press-event", self.on_key_press_event)
 
-        # Load persisted config
+        # Load persisted config and restore window state
         self.load_config()
+        self.last_page = restore_window_state(self, getattr(self, "_raw_config", {}))
+        bind_window_geometry_events(self, on_change_callback=self._on_window_geometry_changed)
+        setup_window_shortcuts(
+            self,
+            on_switch_page=self.switch_to_tab,
+            on_help=self.replay_onboarding,
+            on_quit=lambda: self.quit_app(None),
+            on_refresh=self.refresh_status,
+        )
+
         self.healer_enabled = getattr(self, 'healer_enabled', True)
         if self.healer_enabled:
             self.healer.start()
@@ -663,8 +695,11 @@ class Zapret2App(Gtk.Window):
         self.load_css()
 
         # Build UI layout
+        root_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self.add(root_box)
+
         main_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
-        self.add(main_box)
+        root_box.pack_start(main_box, True, True, 0)
 
         # 1. Main Content Stack
         self.stack = Gtk.Stack()
@@ -687,11 +722,32 @@ class Zapret2App(Gtk.Window):
 
         # 2. Left Navigation Sidebar
         self.sidebar_box = self.create_sidebar()
+        apply_a11y_tooltips(self)
         main_box.pack_start(self.sidebar_box, False, False, 0)
         main_box.pack_start(self.stack, True, True, 0)
 
-        if "dashboard" in self.nav_buttons:
+        # 3. Bottom persistent status bar
+        curr_preset = getattr(self, "zapret2_preset", "Default (circular)") if getattr(self, "engine_mode", "") == "nfqws2" else getattr(self, "active_preset", "general")
+        self.persistent_bar = create_persistent_bar(
+            on_toggle=lambda: self.on_toggle_engine(None),
+            active_preset=curr_preset,
+            engine_mode=getattr(self, "engine_mode", "nfqws2"),
+        )
+        if self.persistent_bar:
+            root_box.pack_end(self.persistent_bar, False, False, 0)
+
+        target_page = getattr(self, "last_page", "dashboard")
+        if target_page in self.nav_buttons:
+            self.nav_buttons[target_page].set_active(True)
+        elif "dashboard" in self.nav_buttons:
             self.nav_buttons["dashboard"].set_active(True)
+
+        active_target = target_page if target_page in self.nav_buttons else "dashboard"
+        child = self.stack.get_child_by_name(active_target)
+        if child:
+            child.show()
+            self.stack.set_visible_child(child)
+        self.stack.set_visible_child_name(active_target)
 
         # Initialize System Tray
         self.setup_tray()
@@ -739,8 +795,49 @@ class Zapret2App(Gtk.Window):
             self.enable_auto_hostlist = cfg.get("enable_auto_hostlist", self.enable_auto_hostlist)
             self.healer_enabled = cfg.get("healer_enabled", True)
             self.minimize_to_tray = cfg.get("minimize_to_tray", True)
+            self.onboarding_completed = cfg.get("onboarding_completed", False)
+            self.theme = cfg.get("theme", getattr(self, "theme", "dark"))
+            self.window_width = cfg.get("window_width", getattr(self, "window_width", 1080))
+            self.window_height = cfg.get("window_height", getattr(self, "window_height", 720))
+            self.window_maximized = cfg.get("window_maximized", getattr(self, "window_maximized", False))
+            self.last_page = cfg.get("last_page", getattr(self, "last_page", "dashboard"))
+            self._raw_config = cfg
         except Exception as e:
             print("Config load error:", e)
+
+    def _on_window_geometry_changed(self):
+        self.save_config()
+
+    def on_configure_event(self, widget, event):
+        return False
+
+    def on_key_press_event(self, widget, event):
+        state = event.state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.MOD1_MASK)
+        keyval = event.keyval
+        if state & Gdk.ModifierType.CONTROL_MASK:
+            if keyval in (Gdk.KEY_q, Gdk.KEY_Q, Gdk.KEY_Cyrillic_shorti, Gdk.KEY_Cyrillic_SHORTI):
+                self.quit_app(None)
+                return True
+            if keyval in (Gdk.KEY_w, Gdk.KEY_W, Gdk.KEY_Cyrillic_tse, Gdk.KEY_Cyrillic_TSE):
+                self.on_delete_event(self, None)
+                return True
+            if keyval in (Gdk.KEY_r, Gdk.KEY_R, Gdk.KEY_Cyrillic_ka, Gdk.KEY_Cyrillic_KA):
+                self.refresh_status()
+                return True
+            if Gdk.KEY_1 <= keyval <= Gdk.KEY_9:
+                idx = keyval - Gdk.KEY_1
+                nav_keys = list(getattr(self, "nav_buttons", {}).keys())
+                if idx < len(nav_keys):
+                    target = nav_keys[idx]
+                    self.nav_buttons[target].set_active(True)
+                    return True
+        elif keyval in (Gdk.KEY_F1, 0xFFBE):
+            self.replay_onboarding()
+            return True
+        elif keyval in (Gdk.KEY_F5, 0xFFC2):
+            self.refresh_status()
+            return True
+        return False
 
     def save_config(self):
         try:
@@ -765,19 +862,40 @@ class Zapret2App(Gtk.Window):
                 "enable_auto_hostlist": getattr(self, "enable_auto_hostlist", False),
                 "healer_enabled": self.healer_enabled,
                 "minimize_to_tray": getattr(self, "minimize_to_tray", True),
+                "onboarding_completed": getattr(self, "onboarding_completed", False),
+                "theme": getattr(self, "theme", "dark"),
             }
+            save_window_state(self, getattr(self, "last_page", "dashboard"), data)
             save_config_to_file(CONFIG_FILE, data)
         except Exception as e:
             print("Config save error:", e)
 
-    def load_css(self):
-        provider = Gtk.CssProvider()
-        provider.load_from_data(FLUENT_CSS)
-        Gtk.StyleContext.add_provider_for_screen(
-            Gdk.Screen.get_default(),
-            provider,
-            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+    def replay_onboarding(self):
+        show_onboarding(
+            parent_window=self,
+            config={
+                "preset": self.active_preset,
+                "onboarding_completed": getattr(self, "onboarding_completed", False),
+            },
+            config_file=CONFIG_FILE,
+            on_finish=self.on_onboarding_finished,
         )
+
+    def on_onboarding_finished(self):
+        self.onboarding_completed = True
+        self.load_config()
+
+    def load_css(self):
+        theme_name = getattr(self, "theme", "dark")
+        self.css_provider = load_theme(theme_name, getattr(self, "css_provider", None))
+
+    def set_theme(self, theme_name: str):
+        if theme_name in VALID_THEMES:
+            self.theme = theme_name
+            if hasattr(self, "theme_manager"):
+                self.theme_manager.current_theme = theme_name
+            self.load_css()
+            self.save_config()
 
     def create_page_container(self, title_text, subtitle_text):
         """Creates a scrolled page with a constrained, centered content width for ultrawide displays."""
@@ -880,7 +998,13 @@ class Zapret2App(Gtk.Window):
                 if key != name and btn.get_active():
                     btn.set_active(False)
             if hasattr(self, "stack"):
+                child = self.stack.get_child_by_name(name)
+                if child:
+                    child.show()
+                    self.stack.set_visible_child(child)
                 self.stack.set_visible_child_name(name)
+            self.last_page = name
+            self.save_config()
         finally:
             self._updating_nav = False
 
@@ -2469,6 +2593,40 @@ class Zapret2App(Gtk.Window):
         card_tray.pack_end(self.sw_tray, False, False, 0)
         vbox.pack_start(card_tray, False, False, 0)
 
+        # Theme Card
+        card_theme = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        card_theme.get_style_context().add_class("fluent-card")
+        th_info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        th_info.pack_start(Gtk.Label(label="<b>Тема оформления (Appearance)</b>", use_markup=True, xalign=0), False, False, 0)
+        th_info.pack_start(Gtk.Label(label="Переключение между тёмной, светлой или автоматической системной темой", xalign=0), False, False, 0)
+        card_theme.pack_start(th_info, True, True, 0)
+
+        self.combo_theme = Gtk.ComboBoxText()
+        self.combo_theme.append("dark", "🌙 Тёмная тема")
+        self.combo_theme.append("light", "☀️ Светлая тема")
+        self.combo_theme.append("system", "💻 Системная")
+        current_th = getattr(self, "theme", "dark")
+        self.combo_theme.set_active_id(current_th if current_th in ("dark", "light", "system") else "dark")
+        self.combo_theme.connect("changed", self.on_theme_changed)
+        self.combo_theme.set_valign(Gtk.Align.CENTER)
+        card_theme.pack_end(self.combo_theme, False, False, 0)
+        vbox.pack_start(card_theme, False, False, 0)
+
+        # Onboarding Tour Card
+        card_onboarding = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        card_onboarding.get_style_context().add_class("fluent-card")
+        o_info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        o_info.pack_start(Gtk.Label(label="<b>Обучение и интерактивный тур</b>", use_markup=True, xalign=0), False, False, 0)
+        o_info.pack_start(Gtk.Label(label="Повторно запустить тур первого запуска: обзор nfqws2, пресетов и трея", xalign=0), False, False, 0)
+        card_onboarding.pack_start(o_info, True, True, 0)
+
+        btn_onboarding = Gtk.Button(label="⚙️ Пройти обучение заново")
+        btn_onboarding.get_style_context().add_class("fluent-btn-secondary")
+        btn_onboarding.connect("clicked", lambda _: self.replay_onboarding())
+        btn_onboarding.set_valign(Gtk.Align.CENTER)
+        card_onboarding.pack_end(btn_onboarding, False, False, 0)
+        vbox.pack_start(card_onboarding, False, False, 0)
+
         # System Details Card
         about_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         about_card.get_style_context().add_class("fluent-card")
@@ -2514,6 +2672,20 @@ class Zapret2App(Gtk.Window):
 
     def _apply_status(self, out):
         return self.status_presenter.apply(out)
+
+    def update_persistent_bar(self, data):
+        if getattr(self, "persistent_bar", None) is not None:
+            preset = getattr(self, "zapret2_preset", None) if getattr(self, "engine_mode", "") == "nfqws2" else getattr(self, "active_preset", "general")
+            mode = getattr(self, "engine_mode", "nfqws2")
+            self.persistent_bar.update_status(data, active_preset=preset, engine_mode=mode)
+
+    def toggle_engine(self):
+        self.on_toggle_engine(None)
+
+    def on_theme_changed(self, combo):
+        active_id = combo.get_active_id()
+        if active_id:
+            self.set_theme(active_id)
 
     def on_iface_changed(self, combo):
         if self._syncing_iface:
@@ -2608,67 +2780,42 @@ X-GNOME-Autostart-enabled=true
                 os.remove(AUTOSTART_FILE)
 
     def setup_tray(self):
+        self.has_tray = False
         icon_path = os.path.join(APP_DIR, "icon.svg")
         if not os.path.exists(icon_path):
             icon_path = "network-vpn"
 
-        self.tray_menu = Gtk.Menu()
-
-        self.tray_status_item = Gtk.MenuItem(label="Статус: Остановлен")
-        self.tray_status_item.set_sensitive(False)
-        self.tray_menu.append(self.tray_status_item)
-
-        self.tray_toggle_item = Gtk.MenuItem(label="▶ Запустить обход")
-        self.tray_toggle_item.connect("activate", lambda _: self.on_toggle_engine(None))
-        self.tray_menu.append(self.tray_toggle_item)
-
-        self.tray_menu.append(Gtk.SeparatorMenuItem())
-
-        preset_item = Gtk.MenuItem(label="Быстрая смена пресета (Zapret 2)")
-        preset_sub = Gtk.Menu()
         catalog = PresetCatalog.load_from_directory(os.path.join(APP_DIR, "zapret2", "presets", "winws2_builtin"))
         z2_top_presets = [(p.id, p.display_name) for p in catalog.get_top_recommended()]
-        for z_id, z_title in z2_top_presets:
-            it = Gtk.MenuItem(label=z_title)
-            it.connect("activate", self.on_tray_z2_preset_selected, z_id)
-            preset_sub.append(it)
-        preset_item.set_submenu(preset_sub)
-        self.tray_menu.append(preset_item)
+        active_id = getattr(self, "zapret2_preset", "") or ""
+        if active_id and not active_id.endswith(".txt"):
+            active_id += ".txt"
 
-        self.tray_menu.append(Gtk.SeparatorMenuItem())
+        self.tray_manager = TrayManager(
+            app_id="zapret-gui",
+            icon_path=icon_path,
+            icon_theme_path=APP_DIR,
+            on_toggle_bypass=lambda *_: self.on_toggle_engine(None),
+            on_preset_selected=lambda preset_id: self.on_tray_z2_preset_selected(None, preset_id),
+            on_show_hide=lambda: self.on_tray_open_clicked(None),
+            on_quit=lambda: self.quit_app(None),
+        )
+        self.tray_manager.rebuild_presets_menu(z2_top_presets, active_preset_id=active_id)
 
-        open_item = Gtk.MenuItem(label="Открыть окно")
-        open_item.connect("activate", self.on_tray_open_clicked)
-        self.tray_menu.append(open_item)
-
-        quit_item = Gtk.MenuItem(label="Выход")
-        quit_item.connect("activate", self.quit_app)
-        self.tray_menu.append(quit_item)
-
-        self.tray_menu.show_all()
-
-        if AppIndicator is not None:
-            try:
-                self.indicator = AppIndicator.Indicator.new(
-                    "zapret-gui",
-                    icon_path,
-                    AppIndicator.IndicatorCategory.APPLICATION_STATUS
-                )
-                if hasattr(self.indicator, "set_icon_theme_path"):
-                    self.indicator.set_icon_theme_path(APP_DIR)
-                self.indicator.set_status(AppIndicator.IndicatorStatus.ACTIVE)
-                self.indicator.set_menu(self.tray_menu)
-                return
-            except Exception as e:
-                print("AppIndicator error:", e)
-
-        try:
-            self.status_icon = Gtk.StatusIcon.new_from_file(icon_path) if os.path.exists(icon_path) else Gtk.StatusIcon.new_from_icon_name("network-vpn")
-            self.status_icon.connect("popup-menu", self.on_status_icon_popup)
-            self.status_icon.connect("activate", lambda _: self.on_tray_open_clicked(None))
-            self.status_icon.set_visible(True)
-        except Exception as e:
-            print("StatusIcon error:", e)
+        self.tray_menu = self.tray_manager.menu
+        self.tray_status_item = self.tray_manager.status_item
+        self.tray_toggle_item = self.tray_manager.toggle_item
+        self.has_tray = self.tray_manager.is_available()
+        if self.tray_manager.indicator is not None:
+            self.indicator = self.tray_manager.indicator
+        elif hasattr(self, "indicator"):
+            del self.indicator
+        if self.tray_manager.status_icon is not None:
+            self.status_icon = self.tray_manager.status_icon
+        elif hasattr(self, "status_icon"):
+            del self.status_icon
+        if not self.has_tray:
+            print("Tray unavailable:", self.tray_manager.fallback_reason)
 
     def on_status_icon_popup(self, icon, button, activate_time):
         self.tray_menu.popup(None, None, Gtk.StatusIcon.position_menu, icon, button, activate_time)
@@ -2709,6 +2856,13 @@ X-GNOME-Autostart-enabled=true
             self.restart_engine()
 
     def update_tray(self, running):
+        manager = getattr(self, "tray_manager", None)
+        if manager is not None:
+            preset = getattr(self, "zapret2_preset", None) if getattr(self, "engine_mode", "") == "nfqws2" else getattr(self, "active_preset", None)
+            manager.update_status(bool(running), current_preset=preset)
+            self.tray_status_item = manager.status_item
+            self.tray_toggle_item = manager.toggle_item
+            return
         if hasattr(self, "tray_status_item"):
             mode = {"tpws": "TPWS", "nfqws2": "nfqws2"}.get(self.engine_mode, "nfqws")
             self.tray_status_item.set_label(f"Статус: {'Активен (' + mode + ')' if running else 'Выключен'}")
@@ -2717,7 +2871,7 @@ X-GNOME-Autostart-enabled=true
 
     def on_delete_event(self, widget, event):
         desktop = (os.environ.get("XDG_CURRENT_DESKTOP") or "").lower()
-        if "niri" in desktop or not getattr(self, "minimize_to_tray", True):
+        if not getattr(self, "has_tray", False) or "niri" in desktop or not getattr(self, "minimize_to_tray", True):
             self.quit_app(None)
             return True
         self.hide()
@@ -2783,11 +2937,13 @@ def main():
     minimized = "--minimized" in sys.argv
     app = Zapret2App(minimized=minimized)
     app.connect("destroy", Gtk.main_quit)
-    if minimized:
+    if minimized and getattr(app, "has_tray", False):
         app.show_all()
         app.hide()
     else:
         app.show_all()
+        if should_show_onboarding(getattr(app, "_raw_config", {})):
+            GLib.idle_add(app.replay_onboarding)
     Gtk.main()
 
 

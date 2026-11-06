@@ -14,7 +14,7 @@
 | **1** | **P0: Корректность и безопасность (10 коммитов)** | 🟢 Готово | `a1561b6..a44fba9` | UDP ct-лимит, flock, watchdog, честный статус/UI, DNS rollback, /etc/hosts, EngineParams, config v2, AST-страж |
 | **1.5**| **Hardening & Behavioral Fixes (5 коммитов)** | 🟢 Готово | `9016199..3015bff` | Устранение регрессий: non-systemd PID fallback, идемпотентный flock, удаление раннего маркера nft-active, строгий EngineParams, поведенческие тесты |
 | **2** | **Паритет данных и моделей (5 коммитов)** | 🟢 Готово | `7e9e6c0..60d29c2` | Золотой снапшот 136 ID, PresetCatalog (63 сем. · 136 версий), динамический UI, SSOT пресетов (healer/main), --skip профилей, GtkSource редактор |
-| **3** | **Паритет UI/UX** | 🟡 Следующий | — | Fluent-структура GTK3, карточки, трей, онбординг, доступность |
+| **3** | **Паритет UI/UX** | 🟢 Готово | см. коммиты Этапа 3 | Persistent status bar, TrayManager (Ayatana → AppIndicator → StatusIcon → none), онбординг, тема dark/light/system, геометрия окна и последняя страница, a11y, headless Xvfb: 72 passed |
 | **9** | **Тесты и CI (для сделанного)** | ⚪ В очереди | — | Пирамида тестов, AST-стражи, GitHub Actions / Forgejo CI |
 | **4** | **Оркестратор (автоподбор стратегий)** | ⚪ В очереди | — | Пакетный перебор 136 пресетов, скоринг, NetworkManager D-Bus |
 | **5** | **Диагностика и классификация** | ⚪ В очереди | — | Chrome-отпечаток (curl_cffi), классификация ТСПУ, QUIC-тест |
@@ -50,7 +50,10 @@
 | **Health Check и автолечение** | Служба самовосстановления | Демон `healer.py` (реакция на NFQWS_ONLY, авторестарт) | 🟡 Частично | Доработка до строгого FSM в Этапе 4 |
 | **Реалистичные пробы (TLS fingerprint)** | Браузерные отпечатки | urllib (Python fingerprint) | 🟡 Частично | Миграция на `curl_cffi` (Chrome TLS) в Этапе 5 |
 | **Классификация блокировок ТСПУ** | Разбор причин (SNI, IP, заглушка) | Базовый HTTP-код/ошибка | 🟡 Частично | Модуль `diagnostics/classify.py` в Этапе 5 |
-| **Трей и уведомления** | Win32 Tray Icon + меню | AyatanaAppIndicator3 / GTK Tray + свитч в настройках | 🟢 Есть | `main.py`, `config_manager.py` |
+| **Трей и уведомления** | Win32 Tray Icon + меню | TrayManager: AyatanaAppIndicator3 → AppIndicator3 → Gtk.StatusIcon → честное отсутствие трея, подменю пресетов, свитч в настройках | 🟢 Есть | `tray_manager.py`, `main.py`, `config_manager.py` |
+| **Постоянная строка статуса** | Статус-строка в главном окне | PersistentStatusBar внизу окна: бейдж состояния, пресет и движок, кнопка запуска/остановки, доступная с клавиатуры | 🟢 Есть | `persistent_bar.py`, `status_presenter.py`, `main.py` |
+| **Онбординг первого запуска** | Приветствие и тур по разделам | Трёхшаговый тур, флаг `onboarding_completed` в конфиге, повторный запуск из настроек и по F1 | 🟢 Есть | `onboarding.py`, `config_manager.py`, `main.py` |
+| **Тема, геометрия и доступность** | Тема оформления, сохранение окна | Тема dark/light/system, сохранение размера, maximized и последней страницы, горячие клавиши Ctrl+1..9, подсказки | 🟢 Есть | `theme_manager.py`, `window_state.py`, `main.py` |
 | **Управление привилегиями** | Windows UAC | Polkit `moe.zapret.gui.policy` + pkexec | 🟢 Есть | `moe.zapret.gui.policy`, `engine.sh` |
 | **Флаг `--version` / CLI** | CLI флаги версии и режима | `--version`, `-v`, `--minimized` | 🟢 Есть | `version.py`, `main.py` |
 | **WinDivert raw packet injection** | Поддерживается ядром Windows | Неприменимо на Linux | ⚪ Неприменимо | Заменено на Linux `nftables` + `NFQUEUE` (архитектурный аналог) |

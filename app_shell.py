@@ -12,6 +12,8 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, GLib
 
+from persistent_bar import PersistentStatusBar, create_persistent_bar
+
 
 def create_page_container(title_text: str, subtitle_text: Optional[str] = None) -> Tuple[Gtk.ScrolledWindow, Gtk.Box]:
     """Creates a scrolled page with a constrained, centered content width for ultrawide displays."""

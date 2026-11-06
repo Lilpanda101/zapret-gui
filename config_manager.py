@@ -36,6 +36,12 @@ DEFAULT_CONFIG = {
     "enable_auto_hostlist": False,
     "healer_enabled": True,
     "minimize_to_tray": True,
+    "onboarding_completed": False,
+    "window_width": 1080,
+    "window_height": 720,
+    "window_maximized": False,
+    "last_page": "dashboard",
+    "theme": "dark",
 }
 
 
@@ -108,6 +114,7 @@ def migrate_config(data: dict) -> dict:
         "enable_general_https",
         "enable_auto_hostlist",
         "healer_enabled",
+        "onboarding_completed",
     ):
         if bool_key in data:
             out[bool_key] = _safe_bool(data[bool_key], DEFAULT_CONFIG[bool_key])
@@ -123,6 +130,37 @@ def migrate_config(data: dict) -> dict:
     ):
         if str_key in data and isinstance(data[str_key], str):
             out[str_key] = data[str_key]
+
+    # 8. Window geometry and last active page
+    out["window_width"] = _safe_int(
+        data.get("window_width", DEFAULT_CONFIG["window_width"]),
+        default=1080,
+        min_val=400,
+        max_val=7680,
+    )
+    out["window_height"] = _safe_int(
+        data.get("window_height", DEFAULT_CONFIG["window_height"]),
+        default=720,
+        min_val=300,
+        max_val=4320,
+    )
+    valid_pages = (
+        "dashboard", "presets", "profiles", "zapret2", "dpi_mode",
+        "monitor", "dns", "hosts", "updates", "blockcheck", "logs", "settings"
+    )
+    raw_page = data.get("last_page")
+    if raw_page in valid_pages:
+        out["last_page"] = str(raw_page)
+    else:
+        out["last_page"] = "dashboard"
+
+    out["window_maximized"] = _safe_bool(data.get("window_maximized"), False)
+
+    raw_theme = data.get("theme")
+    if raw_theme in ("dark", "light", "system"):
+        out["theme"] = str(raw_theme)
+    else:
+        out["theme"] = "dark"
 
     out["version"] = CONFIG_VERSION
     return out
@@ -163,4 +201,28 @@ def save_config_to_file(path: str, data: dict) -> bool:
                 os.remove(temp_name)
             except OSError:
                 pass
+        return False
+
+
+def should_show_onboarding(config: dict) -> bool:
+    """Check if onboarding dialog should be displayed."""
+    if not isinstance(config, dict):
+        return True
+    return not bool(config.get("onboarding_completed", False))
+
+
+def mark_onboarding_completed(config_file: str = None, in_memory_config: dict = None) -> bool:
+    """Mark onboarding tour as completed both in-memory and on disk."""
+    if isinstance(in_memory_config, dict):
+        in_memory_config["onboarding_completed"] = True
+
+    if not config_file:
+        return True
+
+    try:
+        data = load_config_from_file(config_file)
+        data["onboarding_completed"] = True
+        return save_config_to_file(config_file, data)
+    except Exception as e:
+        logger.error("Failed to mark onboarding completed: %s", e)
         return False
