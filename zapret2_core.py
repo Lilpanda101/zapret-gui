@@ -88,10 +88,12 @@ class PresetDocument:
             for raw in body:
                 stripped = raw.strip()
                 if stripped.startswith("--new="):
-                    name = stripped.split("=", 1)[1].strip() or name
+                    val = stripped.split("=", 1)[1].strip()
+                    name = val.strip("\"'") or name
                 elif stripped.startswith("--name="):
-                    name = stripped.split("=", 1)[1].strip() or name
-                elif stripped == "--skip":
+                    val = stripped.split("=", 1)[1].strip()
+                    name = val.strip("\"'") or name
+                elif re.match(r"^--skip(?:\s*#.*)?$", stripped):
                     enabled = False
                 elif _is_filter_line(stripped):
                     filters.append(stripped)
@@ -110,10 +112,12 @@ class PresetDocument:
     def set_profile_enabled(self, index: int, enabled: bool) -> None:
         profile = self._profile(index)
         body = self.lines[profile.start:profile.end]
-        body = [line for line in body if line.strip() != "--skip"]
+        body = [line for line in body if not re.match(r"^--skip(?:\s*#.*)?$", line.strip())]
         if not enabled:
             insert_at = 1 if body and body[0].strip().startswith("--new") else 0
             while insert_at < len(body) and not body[insert_at].strip():
+                insert_at += 1
+            if insert_at < len(body) and body[insert_at].strip().startswith(("--name=", "--name ")):
                 insert_at += 1
             body.insert(insert_at, "--skip")
         self.lines[profile.start:profile.end] = body
@@ -125,6 +129,11 @@ class PresetDocument:
         if len(replacement.profiles) != 1:
             raise PresetError("Редактор должен содержать ровно один профиль")
         new_lines = text.replace("\r\n", "\n").replace("\r", "\n").strip("\n").split("\n")
+        # Сохранение структуры --new при редактировании профилей с index > 0
+        if index > 0 and new_lines:
+            first_stripped = new_lines[0].strip()
+            if not (first_stripped == "--new" or first_stripped.startswith("--new=")):
+                new_lines.insert(0, "--new")
         self.lines[profile.start:profile.end] = new_lines
         self._reparse()
 
@@ -484,6 +493,8 @@ def adapt_preset(text: str, app_dir: Path = APP_DIR, data_dir: Path = DATA_DIR,
             option = option.lower()
             if option.startswith("--wf-"):
                 if not separator:
+                    if option != "--wf-l3":
+                        warnings.append(f"Пропущен Windows-фильтр: {option}")
                     continue
                 if option == "--wf-tcp-out":
                     firewall.tcp_out = _validate_ports(value)
@@ -576,6 +587,24 @@ def adapt_preset(text: str, app_dir: Path = APP_DIR, data_dir: Path = DATA_DIR,
 
     return AdaptedPreset(arguments, firewall, warnings, len(document.profiles))
 
+
+def check_preset_unsupported_options(text: str) -> list[str]:
+    """Проверяет пресет на наличие непереносимых для Linux Windows/WinDivert параметров."""
+    warnings: list[str] = []
+    for raw in text.splitlines():
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        try:
+            tokens = _split_option(stripped)
+        except PresetError:
+            continue
+        for arg in tokens:
+            opt, sep, val = arg.partition("=")
+            opt = opt.lower()
+            if opt.startswith("--wf-") and opt != "--wf-tcp-empty":
+                warnings.append(f"Непереносимый Windows-параметр WinDivert: {opt}")
+    return warnings
 
 
 def _ports_expression(ports: Iterable[str]) -> str:

@@ -17,6 +17,13 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("GLib", "2.0")
 from gi.repository import Gtk, Gdk, GLib
 
+try:
+    gi.require_version("GtkSource", "4")
+    from gi.repository import GtkSource
+    HAVE_GTK_SOURCE = True
+except Exception:
+    HAVE_GTK_SOURCE = False
+
 import zapret2_core as core
 from catalog.preset_catalog import PresetCatalog, parse_preset_id
 
@@ -170,6 +177,7 @@ class Zapret2Page:
         self.category_buttons = {}
         self.chk_all_versions = None
         self.lbl_catalog_stats = None
+        self._is_dirty = False
         self.game_banner = None
         self.health_badges = {}
         self.health_verdict = None
@@ -373,16 +381,49 @@ class Zapret2Page:
         profile_row.pack_end(Gtk.Label(label="Включён"), False, False, 0)
         profile_card.pack_start(profile_row, False, False, 0)
 
+        # Панель поиска и замены в тексте профиля
+        search_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.ed_search_entry = Gtk.SearchEntry()
+        self.ed_search_entry.set_placeholder_text("Поиск в профиле...")
+        self.ed_search_entry.connect("search-changed", self._on_ed_search_changed)
+        search_bar.pack_start(self.ed_search_entry, True, True, 0)
+
+        btn_find = Gtk.Button(label="Найти")
+        btn_find.connect("clicked", self._find_next)
+        search_bar.pack_start(btn_find, False, False, 0)
+
+        self.ed_replace_entry = Gtk.Entry()
+        self.ed_replace_entry.set_placeholder_text("Заменить на...")
+        search_bar.pack_start(self.ed_replace_entry, True, True, 0)
+
+        btn_replace = Gtk.Button(label="Заменить")
+        btn_replace.connect("clicked", self._replace_current)
+        search_bar.pack_start(btn_replace, False, False, 0)
+
+        btn_replace_all = Gtk.Button(label="Все")
+        btn_replace_all.connect("clicked", self._replace_all)
+        search_bar.pack_start(btn_replace_all, False, False, 0)
+        profile_card.pack_start(search_bar, False, False, 0)
+
         scroller = Gtk.ScrolledWindow()
         scroller.set_size_request(-1, 260)
-        self.buffer = Gtk.TextBuffer()
-        view = Gtk.TextView(buffer=self.buffer)
+        if HAVE_GTK_SOURCE:
+            self.buffer = GtkSource.Buffer()
+            view = GtkSource.View.new_with_buffer(self.buffer)
+            view.set_show_line_numbers(True)
+            view.set_highlight_current_line(True)
+        else:
+            self.buffer = Gtk.TextBuffer()
+            view = Gtk.TextView(buffer=self.buffer)
         view.set_monospace(True)
         view.get_style_context().add_class("log-view")
+        self.buffer.connect("changed", self._on_buffer_changed)
         scroller.add(view)
         profile_card.pack_start(scroller, True, True, 0)
+
         edit_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self._button(edit_actions, "Сохранить профиль", self.save_profile, True)
+        self._button(edit_actions, "Сохранить как свой пресет...", self.save_as_user_preset)
         self._button(edit_actions, "Перечитать", self.reload)
         self._button(edit_actions, "Сбросить мои правки", self.reset)
         profile_card.pack_start(edit_actions, False, False, 0)
@@ -530,20 +571,56 @@ class Zapret2Page:
     def show_profile(self, index):
         if not self.document or not self.document.profiles:
             self.buffer.set_text("")
+            self._is_dirty = False
             return
         self.profile_index = index
         profile = self.document.profiles[index]
         self._loading = True
         self.enabled_switch.set_active(profile.enabled)
-        self._loading = False
         self.buffer.set_text(self.document.profile_text(index))
+        self._is_dirty = False
+        self._loading = False
+
+    def _on_buffer_changed(self, _):
+        if not self._loading:
+            self._is_dirty = True
+
+    def _confirm_discard_dirty(self) -> bool:
+        if not self._is_dirty:
+            return True
+        dialog = Gtk.MessageDialog(
+            transient_for=getattr(self.app, "window", None),
+            flags=0,
+            message_type=Gtk.MessageType.WARNING,
+            buttons=Gtk.ButtonsType.YES_NO,
+            text="Имеются несохранённые изменения!",
+        )
+        dialog.format_secondary_text(
+            "В текущем профиле есть несохранённые правки. Отменить их и переключиться?"
+        )
+        resp = dialog.run()
+        dialog.destroy()
+        if resp == Gtk.ResponseType.YES:
+            self._is_dirty = False
+            return True
+        return False
 
     def on_preset_selected(self, combo):
         if not self._loading:
+            if not self._confirm_discard_dirty():
+                self._loading = True
+                combo.set_active_id(self.preset_id)
+                self._loading = False
+                return
             self.load_preset(combo.get_active_id())
 
     def on_profile_selected(self, combo):
         if not self._loading and combo.get_active_id() is not None:
+            if not self._confirm_discard_dirty():
+                self._loading = True
+                combo.set_active_id(str(self.profile_index))
+                self._loading = False
+                return
             self.show_profile(int(combo.get_active_id()))
 
     def _save_document(self):
@@ -559,6 +636,7 @@ class Zapret2Page:
                 raise core.PresetError("Нельзя выключить последний активный профиль")
             self.document.set_profile_enabled(self.profile_index, enabled)
             self._save_document()
+            self._is_dirty = False
             self.refresh_profiles(self.profile_index)
         except Exception as exc:
             self._loading = True
@@ -572,10 +650,109 @@ class Zapret2Page:
             text = self.buffer.get_text(start, self.buffer.get_end_iter(), False)
             self.document.replace_profile(self.profile_index, text)
             self._save_document()
+            self._is_dirty = False
             self.refresh_profiles(self.profile_index)
             self.summary.set_text("Профиль сохранён в пользовательской копии. Нажми «Проверить» или «Применить».")
         except Exception as exc:
             self.app.show_dialog("Не удалось сохранить профиль", str(exc))
+
+    def save_as_user_preset(self, _):
+        dialog = Gtk.Dialog(
+            title="Сохранить как свой пресет",
+            transient_for=getattr(self.app, "window", None),
+            flags=0,
+        )
+        dialog.add_buttons(
+            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+            Gtk.STOCK_SAVE, Gtk.ResponseType.OK,
+        )
+        box = dialog.get_content_area()
+        box.set_spacing(8)
+        box.set_margin_start(16)
+        box.set_margin_end(16)
+        box.set_margin_top(16)
+        box.set_margin_bottom(16)
+
+        lbl = Gtk.Label(label="Введите имя для нового пресета:", xalign=0)
+        box.pack_start(lbl, False, False, 0)
+        entry = Gtk.Entry()
+        current_stem = Path(self.preset_id or "custom_preset").stem
+        entry.set_text(f"{current_stem}_custom")
+        box.pack_start(entry, False, False, 0)
+        dialog.show_all()
+
+        resp = dialog.run()
+        name = entry.get_text().strip()
+        dialog.destroy()
+
+        if resp == Gtk.ResponseType.OK and name:
+            try:
+                start = self.buffer.get_start_iter()
+                text = self.buffer.get_text(start, self.buffer.get_end_iter(), False)
+                self.document.replace_profile(self.profile_index, text)
+
+                doc_text = self.document.text()
+                saved_path = core.save_user_preset(name, doc_text)
+                self._is_dirty = False
+                unsupported = core.check_preset_unsupported_options(doc_text)
+                self.preset_id = saved_path.name
+                self.refresh_catalog()
+                self.preset_combo.set_active_id(saved_path.name)
+                msg = f"Пресет успешно сохранён как '{saved_path.name}'."
+                if unsupported:
+                    msg += f"\nВнимание: параметры WinDivert игнорируются на Linux:\n" + "\n".join(unsupported[:5])
+                self.summary.set_text(msg)
+            except Exception as exc:
+                self.app.show_dialog("Ошибка сохранения", str(exc))
+
+    def _on_ed_search_changed(self, entry):
+        pass
+
+    def _find_next(self, _=None):
+        query = self.ed_search_entry.get_text()
+        if not query:
+            return
+        cursor = self.buffer.get_iter_at_mark(self.buffer.get_insert())
+        found = cursor.forward_search(query, Gtk.TextSearchFlags.CASE_INSENSITIVE, None)
+        if not found:
+            start = self.buffer.get_start_iter()
+            found = start.forward_search(query, Gtk.TextSearchFlags.CASE_INSENSITIVE, None)
+        if found:
+            match_start, match_end = found
+            self.buffer.select_range(match_start, match_end)
+
+    def _replace_current(self, _=None):
+        if not self.buffer.get_has_selection():
+            self._find_next()
+            return
+        start, end = self.buffer.get_selection_bounds()
+        rep = self.ed_replace_entry.get_text()
+        self.buffer.begin_user_action()
+        self.buffer.delete(start, end)
+        self.buffer.insert(start, rep)
+        self.buffer.end_user_action()
+        self._find_next()
+
+    def _replace_all(self, _=None):
+        query = self.ed_search_entry.get_text()
+        rep = self.ed_replace_entry.get_text()
+        if not query:
+            return
+        start = self.buffer.get_start_iter()
+        self.buffer.begin_user_action()
+        count = 0
+        while True:
+            found = start.forward_search(query, Gtk.TextSearchFlags.CASE_INSENSITIVE, None)
+            if not found:
+                break
+            m_start, m_end = found
+            self.buffer.delete(m_start, m_end)
+            self.buffer.insert(m_start, rep)
+            start = m_start
+            start.forward_chars(len(rep))
+            count += 1
+        self.buffer.end_user_action()
+        self.summary.set_text(f"Заменено вхождений: {count}")
 
     def apply(self, _):
         if not self.preset_id:
