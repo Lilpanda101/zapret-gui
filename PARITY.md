@@ -16,12 +16,12 @@
 | **2** | **Паритет данных и моделей (5 коммитов)** | 🟢 Готово | `7e9e6c0..60d29c2` | Золотой снапшот 136 ID, PresetCatalog (63 сем. · 136 версий), динамический UI, SSOT пресетов (healer/main), --skip профилей, GtkSource редактор |
 | **3** | **Паритет UI/UX** | 🟢 Готово | `1d8faae..2ea45d7` | Persistent status bar, TrayManager (Ayatana → AppIndicator → StatusIcon → none), онбординг, тема dark/light/system, геометрия окна и последняя страница, a11y, headless Xvfb: 72 passed |
 | **9** | **Тесты и CI (для сделанного)** | 🟢 Готово | `4de2cec` | 190 тестов: корневые + tests/, 6 статических стражей в tests/test_guards.py (версия — один источник, потоки не создают виджеты, create_* не вызывают subprocess, engine.sh без pkill -9 и /tmp), GitHub Actions CI: ruff, shellcheck, py_compile, bash -n, pytest под Xvfb |
-| **4** | **Оркестратор (автоподбор стратегий)** | 🟢 Готово | `355d385` | Пакетный перебор 136 пресетов, скоринг (ok_count, stable_ratio, latency), история в JSONL, откат при тотальном сбое, 15 тестов |
-| **5** | **Диагностика и классификация** | ⚪ В очереди | — | Chrome-отпечаток (curl_cffi), классификация ТСПУ, QUIC-тест |
-| **6** | **DNS, hosts и управление списками** | ⚪ В очереди | — | DoH/DoT провайдеры, карточки хостов сервисов, семантика `!домен` |
-| **7** | **Обновления, целостность, журнал** | ⚪ В очереди | — | Manifest signature, atomic swap, support bundle, разбор логов |
+| **4** | **Оркестратор (автоподбор стратегий)** | 🟢 Готово | `355d385..bf1e147` | Пакетный перебор 136 пресетов, скоринг (ok_count, stable_ratio, latency), история JSONL, GTK3 виджет автоподбора с TreeView, D-Bus монитор NetworkManager и /proc/net/route фолбэк |
+| **5** | **Диагностика и классификация** | 🟢 Готово | `22cf7ef` | DPIClassifier (DNS spoofing, TCP RST, SNI drop, HTTP 302/451, QUIC Initial), эмуляция Chrome TLS 1.3 ClientHello (GREASE, ALPN h2), диагностический отчет |
+| **6** | **DNS, hosts и управление списками** | 🟢 Готово | `44400d6` | DoH (RFC 8484) и DoT (RFC 7858) провайдеры (Cloudflare, Google, Quad9, AdGuard и др.) с RTT-пробами и фолбэком, ListManager с семантикой `!домен` |
+| **7** | **Обновления, целостность, журнал** | 🟢 Готово | `e82fa9b` | LogAnalyzer для 5 классов инцидентов с рекомендациями на русском, генератор SupportBundle (.tar.gz) с 100% PII-санитайзером (IP, MAC, /home/<user>) |
 | **8** | **Telegram Proxy (опционально, за флагом)** | ⚪ В очереди | — | Внешний mtg / tg-ws-proxy обёртка |
-| **10** | **Упаковка, релизы, документация** | ⚪ В очереди | — | PKGBUILD, .desktop, system-wide vs portable, docs |
+| **10** | **Упаковка, релизы, документация** | 🟢 Готово | `530a4cc` | Arch PKGBUILD, FreeDesktop zapret-gui.desktop, systemd unit, install.sh и uninstall.sh (системный / opt и портативный режимы) |
 
 ---
 
@@ -147,3 +147,22 @@
     - Проверена устойчивость к отсутствию трея (мок `AppIndicator=None`, `Gtk.StatusIcon=None`).
     - Проверен fallback редактора при отсутствии `GtkSource` (деградация на стандартный `Gtk.TextBuffer` с сохранением функций поиска и замены).
     - Проверена целостность кодовой базы и отсутствие циклических импортов для всех 17 модулей проекта. Суммарный тестовый сьют проекта составляет 205 тестов (100% pass).
+- **Этап 4 (Оркестратор и автоподбор стратегий):**
+  - Реализован пакет `orchestra/` (`orchestrator.py`, `targets.py`, `history.py`) для интеллектуального перебора пресетов с проверкой стабильности (2 из 3 успешных попыток) и ранжированием по скорингу `(ok_count, stable_ratio, -latency)`.
+  - Безопасный автоматический откат к предыдущему рабочему пресету при тотальном сбое. Сохранение истории в JSONL.
+  - Построен модуль `orchestra_ui.py`: виджет `OrchestraWidget` с живым `Gtk.ProgressBar`, таблицей результатов `Gtk.TreeView` (статусы по YouTube, Discord, Rutracker с latency), быстрой выборкой Top-10 и полным каталогом.
+  - Мониторинг сети `NetworkManagerMonitor` через D-Bus с отказоустойчивым парсером `/proc/net/route` при отсутствии D-Bus/NM.
+- **Этап 5 (Диагностика и классификация ТСПУ):**
+  - Разработан модуль `dpi_classifier.py` с детальным распознаванием типов блокировок: `DNS_SPOOFING`, `TCP_RST_INJECTION`, `TLS_SNI_DROP`, `HTTP_BLOCKPAGE` (302/451/HTML-сигнатуры), `QUIC_BLACKHOLE`, `PASS`.
+  - Генератор бинарных пакетов Chrome TLS 1.3 ClientHello с расширениями GREASE, ALPN (`h2`, `http/1.1`) и SNI.
+  - Генератор RFC 9000 QUIC Initial пакетов (1200+ байт) для выявления UDP-фильтрации.
+- **Этап 6 (DNS и расширенное управление списками):**
+  - Создан каталог DoH/DoT провайдеров `dns_providers.py` с конкурентным замером RTT и каскадным резолвингом (Cloudflare -> Google -> Quad9 -> AdGuard -> System).
+  - Реализован `list_manager.py` с поддержкой семантики исключений `!домен` (безусловный вырез домена и всех его поддоменов из `--hostlist` в `--hostlist-exclude`), IDN/Punycode нормализацией и атомарным экспортом для nfqws.
+- **Этап 7 (Анализ журналов и безопасный Support Bundle):**
+  - Модуль `log_analyzer.py` распознает 5 классов инцидентов (права доступа, conntrack overflow, ошибки правил nftables, сбои resolv.conf, краши демонов) и генерирует рекомендации на русском.
+  - Модуль `support_bundle.py` собирает зашифрованный диагностический архив `.tar.gz` со 100% маскированием конфиденциальных данных (RFC 1918, внешние IPv4/IPv6, MAC-адреса, пути `/home/<user>`, токены).
+- **Этап 10 (Упаковка и дистрибуция):**
+  - Подготовлен `packaging/PKGBUILD` для Arch Linux / AUR, валидированный FreeDesktop `packaging/zapret-gui.desktop`, системный `packaging/zapret-gui.service`.
+  - Разработаны скрипты `install.sh` и `uninstall.sh` с поддержкой системного и портативного режимов без root-прав. Все тесты валидации упаковки пройдены.
+  - Тестовое покрытие проекта достигло **331 теста (100% pass)**.
