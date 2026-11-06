@@ -173,6 +173,18 @@ class PresetCatalog:
     def get_family(self, family_name: str) -> List[PresetEntry]:
         return self._families.get(family_name, [])
 
+    def get_top_recommended(self, limit: int = 4) -> List[PresetEntry]:
+        """Returns top recommended canonical presets for auto-healing and quick selection."""
+        priority_families = ["general ALT", "Default (circular)", "general FAKE TLS AUTO", "ALL TCP & UDP hostfakesplit"]
+        results = []
+        for fam in priority_families:
+            items = self.get_family(fam)
+            if items:
+                plain_items = [it for it in items if not it.game_filter]
+                chosen = plain_items[-1] if plain_items else items[-1]
+                results.append(chosen)
+        return results[:limit]
+
     def filter(
         self,
         query: str = "",

@@ -40,7 +40,6 @@ class HealerState:
         self.last_dns_failover = 0
         self.last_restart = 0
         self.restart_history = []
-        self.current_preset = None
         self.last_check = {}
         self.is_healthy = True
         self.load()
@@ -55,7 +54,6 @@ class HealerState:
                     self.last_dns_failover = data.get("last_dns_failover", 0)
                     self.last_restart = data.get("last_restart", 0)
                     self.restart_history = data.get("restart_history", [])
-                    self.current_preset = data.get("current_preset")
                     self.is_healthy = data.get("is_healthy", True)
         except Exception:
             pass
@@ -70,7 +68,6 @@ class HealerState:
                     "last_dns_failover": self.last_dns_failover,
                     "last_restart": self.last_restart,
                     "restart_history": self.restart_history[-20:],
-                    "current_preset": self.current_preset,
                     "is_healthy": self.is_healthy,
                     "updated": datetime.now().isoformat()
                 }, f, indent=2)
@@ -242,27 +239,29 @@ def switch_dns_to_cloudflare(config, state):
     return ok
 
 
-def switch_to_next_preset(config, state):
+def switch_to_next_preset(config, state=None):
     if config.get("engine_mode") == "nfqws2":
-        # Безопасные универсальные пресеты Zapret2 с полной поддержкой SNI и YouTube/Discord
-        presets = ["general ALT", "Default (circular)", "general FAKE TLS AUTO", "ALL TCP & UDP hostfakesplit"]
+        from catalog.preset_catalog import PresetCatalog, parse_preset_id
+        builtin_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zapret2", "presets", "winws2_builtin")
+        catalog = PresetCatalog.load_from_directory(builtin_dir)
+        top_entries = catalog.get_top_recommended()
+        presets = [p.family for p in top_entries]
         key = "zapret2_preset"
-        current = config.get(key, presets[0])
+        current_raw = config.get(key, presets[0] if presets else "")
+        current_fam = parse_preset_id(current_raw).family
     else:
         presets = ["general", "youtube_discord", "alt_fakedsplit", "alt_split", "multidisorder"]
         key = "preset"
-        current = config.get(key, "general")
+        current_raw = config.get(key, "general")
+        current_fam = current_raw
 
-    # Сравниваем названия без расширения .txt для устранения конфликтов
-    current_stem = current.removesuffix(".txt") if isinstance(current, str) else ""
-    stems = [p.removesuffix(".txt") for p in presets]
     try:
-        idx = stems.index(current_stem)
+        idx = presets.index(current_fam)
         next_idx = (idx + 1) % len(presets)
     except ValueError:
         next_idx = 0
-    next_preset = presets[next_idx]
-    log(f"Switching preset: {current} -> {next_preset}")
+    next_preset = presets[next_idx] if presets else current_raw
+    log(f"Switching preset: {current_raw} -> {next_preset}")
     config[key] = next_preset
     try:
         temporary = CONFIG_FILE + ".tmp"
@@ -271,8 +270,6 @@ def switch_to_next_preset(config, state):
         os.replace(temporary, CONFIG_FILE)
     except Exception as e:
         log(f"Failed to save config: {e}", "ERROR")
-    state.current_preset = next_preset
-    state.save()
     return next_preset
 
 
@@ -417,6 +414,10 @@ class AutoHealer:
                 pass
 
     def get_status(self):
+        from engine_params import EngineParams
+        cfg = load_config()
+        params = EngineParams.from_dict(cfg)
+        active_preset = params.zapret2_preset if params.engine_mode == "nfqws2" else params.preset
         return {
             "running": self.running,
             "healthy": self.state.is_healthy,
@@ -424,7 +425,7 @@ class AutoHealer:
             "dns_fail_count": getattr(self.state, "dns_fail_count", 0),
             "last_check": self.state.last_check,
             "last_restart": self.state.last_restart,
-            "current_preset": self.state.current_preset
+            "current_preset": active_preset
         }
 
 

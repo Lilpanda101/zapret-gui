@@ -2197,12 +2197,8 @@ class Zapret2App(Gtk.Window):
 
         is_zapret2 = getattr(self, "engine_mode", "nfqws2") == "nfqws2"
         if is_zapret2:
-            candidate_presets = [
-                "general ALT",
-                "Default (circular)",
-                "general FAKE TLS AUTO",
-                "ALL TCP & UDP hostfakesplit"
-            ]
+            catalog = PresetCatalog.load_from_directory(os.path.join(APP_DIR, "zapret2", "presets", "winws2_builtin"))
+            candidate_presets = [p.family for p in catalog.get_top_recommended()]
         else:
             candidate_presets = ["general", "youtube_discord", "alt_fakedsplit", "alt_split", "multidisorder"]
 
@@ -2723,12 +2719,8 @@ X-GNOME-Autostart-enabled=true
 
         preset_item = Gtk.MenuItem(label="Быстрая смена пресета (Zapret 2)")
         preset_sub = Gtk.Menu()
-        z2_top_presets = [
-            ("general ALT", "general ALT (Рекомендуемый)"),
-            ("Default (circular)", "Default (circular - авторотация)"),
-            ("general FAKE TLS AUTO", "general FAKE TLS AUTO"),
-            ("ALL TCP & UDP hostfakesplit", "ALL TCP & UDP hostfakesplit"),
-        ]
+        catalog = PresetCatalog.load_from_directory(os.path.join(APP_DIR, "zapret2", "presets", "winws2_builtin"))
+        z2_top_presets = [(p.id, p.display_name) for p in catalog.get_top_recommended()]
         for z_id, z_title in z2_top_presets:
             it = Gtk.MenuItem(label=z_title)
             it.connect("activate", self.on_tray_z2_preset_selected, z_id)
