@@ -9,6 +9,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Mapping, Tuple
 
+from dns_providers import ENGINE_SUPPORTED_DNS
+
 logger = logging.getLogger("zapret_gui.params")
 
 
@@ -70,11 +72,19 @@ class EngineParams:
 
     def to_argv(self, command: str = "start") -> Tuple[str, ...]:
         """Returns the canonical 15-element argument tuple for engine.sh."""
+        dns_val = str(self.dns or "cloudflare")
+        if dns_val not in ENGINE_SUPPORTED_DNS:
+            logger.warning(
+                "DNS provider '%s' is not supported by engine.sh; falling back to 'cloudflare'",
+                dns_val,
+            )
+            dns_val = "cloudflare"
+
         return (
             command,
             str(self.preset or "general"),
             str(self.iface or "any"),
-            str(self.dns or "cloudflare"),
+            dns_val,
             "1" if self.enable_ai_hosts else "0",
             "1" if self.enable_quic else "0",
             "1" if self.enable_discord_voice else "0",
@@ -94,11 +104,18 @@ class EngineParams:
         ct = _as_int(data.get("conntrack_limit", 12), default=12, min_val=1, max_val=128)
 
         ai_hosts_val = data.get("enable_ai_hosts", data.get("ai_hosts"))
+        raw_dns = str(data.get("dns") or data.get("active_dns") or "cloudflare")
+        if raw_dns not in ENGINE_SUPPORTED_DNS:
+            logger.warning(
+                "DNS provider '%s' is not supported by engine.sh; falling back to 'cloudflare'",
+                raw_dns,
+            )
+            raw_dns = "cloudflare"
 
         return cls(
             preset=str(data.get("preset") or data.get("active_preset") or "general"),
             iface=str(data.get("iface") or data.get("active_iface") or "any"),
-            dns=str(data.get("dns") or data.get("active_dns") or "cloudflare"),
+            dns=raw_dns,
             enable_ai_hosts=_as_bool(ai_hosts_val, default=True),
             enable_quic=_as_bool(data.get("enable_quic"), default=True),
             enable_discord_voice=_as_bool(data.get("enable_discord_voice"), default=True),
@@ -115,10 +132,18 @@ class EngineParams:
     @classmethod
     def from_app(cls, app: Any) -> EngineParams:
         """Constructs EngineParams from Zapret2App instance."""
+        app_dns = getattr(app, "active_dns", "cloudflare")
+        if app_dns not in ENGINE_SUPPORTED_DNS:
+            logger.warning(
+                "DNS provider '%s' is not supported by engine.sh; falling back to 'cloudflare'",
+                app_dns,
+            )
+            app_dns = "cloudflare"
+
         return cls(
             preset=getattr(app, "active_preset", "general"),
             iface=getattr(app, "active_iface", "any"),
-            dns=getattr(app, "active_dns", "cloudflare"),
+            dns=app_dns,
             enable_ai_hosts=_as_bool(getattr(app, "enable_ai_hosts", True), default=True),
             enable_quic=_as_bool(getattr(app, "enable_quic", True), default=True),
             enable_discord_voice=_as_bool(getattr(app, "enable_discord_voice", True), default=True),

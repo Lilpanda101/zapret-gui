@@ -162,8 +162,11 @@
   - Опциональный инъектируемый транспорт `curl_cffi` (Chrome TLS fingerprint) в `orchestra/targets.py` и `dpi_classifier.py` без превращения в жёсткую зависимость.
   - **Подключение к UI:** карточка «Глубокая диагностика ТСПУ» подключена на страницу BlockCheck (`main.py:create_blockcheck_page`, `on_classify_tspu`). Фоновый поток, возврат в UI строго через `GLib.idle_add`, раскраска бейджей (CRITICAL/ERROR → `badge-bad`, WARNING → `badge-warn`, PASS → `badge-ok`), вывод BlockType, краткого описания, рекомендаций и сводки summary_text/to_json в monospace `Gtk.TextView`. Существующая экспресс-проверка бейджей сохранена.
 - **Этап 6 (DNS и расширенное управление списками):**
-  - Создан каталог DoH/DoT провайдеров `dns_providers.py` с конкурентным замером RTT и каскадным резолвингом (Cloudflare -> Google -> Quad9 -> AdGuard -> System).
-  - Реализован `list_manager.py` с поддержкой семантики исключений `!домен` (безусловный вырез домена и всех его поддоменов из `--hostlist` в `--hostlist-exclude`), IDN/Punycode нормализацией и атомарным экспортом для nfqws.
+  - Подключен каталог DoH/DoT провайдеров `dns_providers.py` к UI `main.py` (страница 6): динамический выбор провайдеров, фоновый замер RTT по кнопке «Замерить задержки», обновление результатов через `GLib.idle_add` и автоматическая сортировка карточек по RTT.
+  - Строгая валидация провайдеров для `engine.sh` (`ENGINE_SUPPORTED_DNS = cloudflare, google, quad9, adguard, dns_ai, geohide, system`): провайдеры `mullvad`, `comss`, `nextdns` помечены как «не поддерживается движком» и отключены в радио-кнопках; `EngineParams` защищает от передачи неподдерживаемых id в `engine.sh` с fallback на `cloudflare`.
+  - Подключен `ListManager` и компиляция списков к редактору хостов `main.py` (страница 7): поддержка путей `custom_hosts.txt`, `exclude.txt`, `lists/autohostlist.txt`, атомарное сохранение через `atomic_write_text` без нежелательной перезаписи файлов и без потери комментариев/строк.
+  - Добавлено визуальное пояснение синтаксиса `!домен` (безусловное исключение домена и всех его поддоменов из hostlist с переносом в exclude) и кнопка ручной проверки компиляции списков.
+  - Разработаны UI-тесты `tests/test_dns_ui.py` и `tests/test_list_ui.py` (8 тестов: mock probe_all_rtt, сортировка по задержке, блокировка неподдерживаемых провайдеров, сохранение active_dns, семантика !домен и поддоменов, атомарная запись).
 - **Этап 7 (Анализ журналов и безопасный Support Bundle):**
   - Модуль `log_analyzer.py` распознает 5 классов инцидентов (права доступа, conntrack overflow, ошибки правил nftables, сбои resolv.conf, краши демонов) и генерирует рекомендации на русском.
   - Модуль `support_bundle.py` собирает диагностический архив `.tar.gz` со 100% маскированием конфиденциальных данных (RFC 1918, внешние IPv4/IPv6, MAC-адреса, пути `/home/<user>`, токены).
@@ -175,4 +178,3 @@
 - **Этап 10 (Упаковка и дистрибуция):**
   - Подготовлен `packaging/PKGBUILD` для Arch Linux / AUR, валидированный FreeDesktop `packaging/zapret-gui.desktop`, системный `packaging/zapret-gui.service`.
   - Разработаны скрипты `install.sh` и `uninstall.sh` с поддержкой системного и портативного режимов без root-прав. Все тесты валидации упаковки пройдены.
-  - Тестовое покрытие проекта достигло **340 тестов (100% pass)**.

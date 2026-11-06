@@ -29,6 +29,18 @@ class DNSResolutionError(Exception):
     pass
 
 
+# Engine.sh supported DNS providers
+ENGINE_SUPPORTED_DNS: frozenset[str] = frozenset({
+    "cloudflare",
+    "google",
+    "quad9",
+    "adguard",
+    "dns_ai",
+    "geohide",
+    "system",
+})
+
+
 @dataclass(frozen=True)
 class DNSProvider:
     """DNS Provider specification for DoH and DoT."""
@@ -41,6 +53,11 @@ class DNSProvider:
     dot_port: int = 853
     badge: str = ""
     is_encrypted: bool = True
+
+    @property
+    def is_engine_supported(self) -> bool:
+        """True if engine.sh has built-in support for configuring this provider."""
+        return self.id in ENGINE_SUPPORTED_DNS
 
     def matches(self, query: str) -> bool:
         """Case-insensitive search by id, name, or dot_host."""
