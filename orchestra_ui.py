@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import shutil
 import socket
 import struct
 import subprocess
@@ -117,6 +118,8 @@ def read_proc_net_route(route_file: str = "/proc/net/route") -> Tuple[str, str]:
 def get_wifi_ssid_fallback(iface: str = "") -> str:
     """Attempts to read Wi-Fi SSID via iwgetid CLI as fallback."""
     try:
+        if shutil.which("iwgetid") is None and not os.environ.get("PYTEST_CURRENT_TEST"):
+            return ""
         cmd = ["iwgetid", "-r"]
         if iface:
             cmd.append(iface)
@@ -558,6 +561,8 @@ class OrchestraWidget(Gtk.Box):
         """Default preset application invoking app engine methods if available."""
         if self.app:
             try:
+                if hasattr(self.app, "apply_orchestra_preset"):
+                    return bool(self.app.apply_orchestra_preset(preset_id))
                 if hasattr(self.app, "zapret2_preset"):
                     self.app.zapret2_preset = preset_id
                 if hasattr(self.app, "engine_mode"):
@@ -1000,6 +1005,11 @@ class OrchestraWidget(Gtk.Box):
         winner_id = self.latest_result.winner
         ok = self.apply_preset_fn(winner_id)
         if ok:
+            if self.app and hasattr(self.app, "on_orchestra_winner_applied"):
+                try:
+                    self.app.on_orchestra_winner_applied(winner_id)
+                except Exception as exc:
+                    logger.error("Failed to notify app of winner preset: %s", exc)
             self.lbl_status.set_markup(f"<span color='#2e7d32'><b>Пресет '{winner_id}' успешно применён!</b></span>")
         else:
             self.lbl_status.set_markup(f"<span color='#e53935'><b>Не удалось применить пресет '{winner_id}'</b></span>")

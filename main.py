@@ -8,6 +8,7 @@ Modern Fluent-style DPI bypass & diagnostics suite inspired by Windows Zapret 2.
 import os
 import sys
 import json
+from pathlib import Path
 import subprocess
 import threading
 import time
@@ -26,6 +27,15 @@ from healer import get_healer, HEALER_LOG
 from zapret2_ui import Zapret2Page
 from catalog.preset_catalog import PresetCatalog
 from orchestra import Orchestrator, HistoryStore, http_probe, default_targets
+from orchestra_ui import create_orchestra_page, OrchestraWidget, NetworkManagerMonitor
+from dpi_classifier import (
+    BlockType,
+    ClassificationResult,
+    DiagnosticReport,
+    DPIClassifier,
+    classify_domains,
+    get_block_verdict,
+)
 from version import __version__, APP_TITLE, APP_SUBTITLE, APP_DESCRIPTION
 from engine_params import EngineParams
 from status_presenter import StatusPresenter
@@ -652,6 +662,7 @@ class Zapret2App(Gtk.Window):
         self.engine_mode = "nfqws2"
         self.zapret2_preset = "Default (circular)"
         self.zapret2_page = None
+        self.dpi_classifier = None
         self.custom_params = "--filter-tcp=443,2053,2083,2087,2096,8443 --dpi-desync=fake,multidisorder --dpi-desync-split-pos=1,midsld"
         self.enable_youtube = True
         self.enable_discord_tcp = True
@@ -718,6 +729,7 @@ class Zapret2App(Gtk.Window):
         self.stack.add_named(self.create_hosts_page(), "hosts")
         self.stack.add_named(self.create_updates_page(), "updates")
         self.stack.add_named(self.create_blockcheck_page(), "blockcheck")
+        self.stack.add_named(self.create_orchestra_page(), "orchestra")
         self.stack.add_named(self.create_logs_page(), "logs")
         self.stack.add_named(self.create_settings_page(), "settings")
 
@@ -950,6 +962,7 @@ class Zapret2App(Gtk.Window):
                 ("updates", "🔄 Обновления баз Zapret 2"),
             ]),
             ("ДИАГНОСТИКА", [
+                ("orchestra", "⚡ Автоподбор (Orchestra)"),
                 ("blockcheck", "🔍 BlockCheck & Диагностика"),
                 ("logs", "📜 Журнал работы"),
             ]),
@@ -2201,6 +2214,59 @@ class Zapret2App(Gtk.Window):
         card_check.pack_start(grid, False, False, 0)
         vbox.pack_start(card_check, False, False, 0)
 
+        # Карточка «Глубокая диагностика ТСПУ»
+        card_tspu = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        card_tspu.get_style_context().add_class("fluent-card")
+
+        tspu_hdr = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        tspu_title_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        tspu_title_vbox.pack_start(
+            Gtk.Label(label="<b>Глубокая диагностика ТСПУ</b>", use_markup=True, xalign=0),
+            False, False, 0,
+        )
+        tspu_title_vbox.pack_start(
+            Gtk.Label(
+                label="Сигнатурный анализ цензуры: DNS Spoofing, TCP RST, сброс TLS SNI, HTTP заглушки, QUIC blackhole",
+                xalign=0,
+            ),
+            False, False, 0,
+        )
+        tspu_hdr.pack_start(tspu_title_vbox, True, True, 0)
+
+        self.tspu_badge = Gtk.Label(label="Не проверялось")
+        self.tspu_badge.get_style_context().add_class("badge-neutral")
+        self.tspu_badge.set_xalign(1)
+        tspu_hdr.pack_end(self.tspu_badge, False, False, 0)
+        card_tspu.pack_start(tspu_hdr, False, False, 0)
+
+        tspu_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.entry_tspu_domain = Gtk.Entry()
+        self.entry_tspu_domain.set_text("rutracker.org")
+        self.entry_tspu_domain.set_placeholder_text("Введите домен (например, rutracker.org)")
+        self.entry_tspu_domain.connect("activate", self.on_classify_tspu)
+        self.tspu_domain_entry = self.entry_tspu_domain
+        tspu_row.pack_start(self.entry_tspu_domain, True, True, 0)
+
+        self.btn_tspu_classify = Gtk.Button(label="Классифицировать блокировку")
+        self.btn_tspu_classify.get_style_context().add_class("fluent-btn-primary")
+        self.btn_tspu_classify.connect("clicked", self.on_classify_tspu)
+        self.btn_classify_tspu = self.btn_tspu_classify
+        tspu_row.pack_end(self.btn_tspu_classify, False, False, 0)
+        card_tspu.pack_start(tspu_row, False, False, 0)
+
+        tspu_scroll = Gtk.ScrolledWindow()
+        tspu_scroll.set_size_request(-1, 190)
+        self.tspu_diag_buffer = Gtk.TextBuffer()
+        self.tspu_buffer = self.tspu_diag_buffer
+        self.tspu_output = Gtk.TextView(buffer=self.tspu_diag_buffer)
+        self.tspu_output.set_editable(False)
+        self.tspu_output.set_monospace(True)
+        self.diag_output = self.tspu_output
+        tspu_scroll.add(self.tspu_output)
+        card_tspu.pack_start(tspu_scroll, True, True, 0)
+
+        vbox.pack_start(card_tspu, False, False, 0)
+
         native = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         native.get_style_context().add_class("fluent-card")
         native.pack_start(Gtk.Label(label="<b>Настоящий Blockcheck2 (nfqws2)</b>", use_markup=True, xalign=0), False, False, 0)
@@ -2271,7 +2337,98 @@ class Zapret2App(Gtk.Window):
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def on_auto_preset_clicked(self, _):
+    def create_orchestra_page(self, **kwargs):
+        """
+        Creates and returns the ScrolledWindow container hosting OrchestraWidget.
+        """
+        catalog_path = os.path.join(APP_DIR, "zapret2", "presets", "winws2_builtin")
+        history_path = os.path.join(os.path.dirname(CONFIG_FILE), "autotune-history.jsonl")
+        apply_fn = getattr(self, "apply_orchestra_preset", None) or (lambda pid: Zapret2App.apply_orchestra_preset(self, pid))
+        defaults = {
+            "app": self,
+            "apply_preset": apply_fn,
+            "probe": http_probe,
+        }
+        if os.path.isdir(catalog_path):
+            try:
+                defaults["catalog"] = PresetCatalog.load_from_directory(catalog_path)
+            except Exception:
+                pass
+        defaults["history"] = HistoryStore(Path(history_path))
+        defaults.update(kwargs)
+        scrolled, widget = create_orchestra_page(**defaults)
+        self.orchestra_widget = widget
+        return scrolled
+
+    def open_orchestra_page(self):
+        """Switches UI navigation to the Orchestra autotune page."""
+        if hasattr(self, "nav_buttons") and "orchestra" in self.nav_buttons:
+            self.nav_buttons["orchestra"].set_active(True)
+        elif hasattr(self, "stack"):
+            self.stack.set_visible_child_name("orchestra")
+
+    def apply_orchestra_preset(self, preset_id: str) -> bool:
+        """
+        Applies a preset to the running engine during orchestra testing or winner application.
+        Uses EngineParams.from_app(self) + run_engine.
+        """
+        is_zapret2 = getattr(self, "engine_mode", "nfqws2") == "nfqws2"
+        params = EngineParams.from_app(self)
+        if is_zapret2:
+            params.engine_mode = "nfqws2"
+            params.zapret2_preset = preset_id
+        else:
+            params.engine_mode = "nfqws"
+            params.preset = preset_id
+        result = run_engine(*params.to_argv("start"))
+        return getattr(result, "returncode", 0) == 0
+
+    def on_orchestra_winner_applied(self, winner_id: str) -> None:
+        """
+        Updates top_tile_preset, pill_preset, combo_engine_mode, config and status
+        after an orchestra winner is applied.
+        """
+        is_zapret2 = getattr(self, "engine_mode", "nfqws2") == "nfqws2"
+        if is_zapret2:
+            self.zapret2_preset = winner_id
+            self.engine_mode = "nfqws2"
+            if hasattr(self, "top_tile_preset") and self.top_tile_preset:
+                self.top_tile_preset.set_text(winner_id)
+            if hasattr(self, "pill_preset") and self.pill_preset:
+                self.pill_preset.set_text(f"⚡ {winner_id}")
+            if hasattr(self, "combo_engine_mode") and self.combo_engine_mode:
+                self.combo_engine_mode.set_active_id("nfqws2")
+            if hasattr(self, "zapret2_page") and self.zapret2_page:
+                self.zapret2_page.preset_id = winner_id
+                if hasattr(self.zapret2_page, "refresh_catalog"):
+                    self.zapret2_page.refresh_catalog()
+        else:
+            self.active_preset = winner_id
+            self.engine_mode = "nfqws"
+            if hasattr(self, "preset_radios") and winner_id in self.preset_radios:
+                self.preset_radios[winner_id].set_active(True)
+            if hasattr(self, "top_tile_preset") and self.top_tile_preset:
+                title = PRESETS.get(winner_id, {}).get("title", winner_id).split("(")[0].strip()
+                self.top_tile_preset.set_text(title)
+            if hasattr(self, "pill_preset") and self.pill_preset:
+                self.pill_preset.set_text(f"⚡ {PRESETS.get(winner_id, {}).get('title', winner_id)}")
+            if hasattr(self, "combo_engine_mode") and self.combo_engine_mode:
+                self.combo_engine_mode.set_active_id("nfqws")
+
+        if hasattr(self, "save_config"):
+            self.save_config()
+        if hasattr(self, "update_top_tile_mode"):
+            self.update_top_tile_mode()
+        if hasattr(self, "persistent_bar") and self.persistent_bar and hasattr(self.persistent_bar, "update_preset"):
+            self.persistent_bar.update_preset(winner_id)
+        if hasattr(self, "refresh_status"):
+            self.refresh_status()
+
+    def on_auto_preset_clicked(self, _=None):
+        if hasattr(self, "nav_buttons") and "orchestra" in self.nav_buttons:
+            self.open_orchestra_page()
+            return
+
         self.btn_auto_preset.set_sensitive(False)
         self.btn_run_check.set_sensitive(False)
         self.btn_auto_preset.set_label("⏳ Подбор пресета...")
@@ -2286,16 +2443,8 @@ class Zapret2App(Gtk.Window):
             candidate_presets = ["general", "youtube_discord", "alt_fakedsplit", "alt_split", "multidisorder"]
         previous_preset = self.zapret2_preset if is_zapret2 else self.active_preset
 
-        def apply_preset(preset_id):
-            params = EngineParams.from_app(self)
-            if is_zapret2:
-                params.engine_mode = "nfqws2"
-                params.zapret2_preset = preset_id
-            else:
-                params.engine_mode = "nfqws"
-                params.preset = preset_id
-            result = run_engine(*params.to_argv("start"))
-            return getattr(result, "returncode", 0) == 0
+        apply_preset = getattr(self, "apply_orchestra_preset", None) or (lambda pid: Zapret2App.apply_orchestra_preset(self, pid))
+        winner_applied = getattr(self, "on_orchestra_winner_applied", None) or (lambda wid: Zapret2App.on_orchestra_winner_applied(self, wid))
 
         def notify(done, total, preset_id, best):
             label = preset_id if is_zapret2 else PRESETS.get(preset_id, {}).get("title", preset_id).split("(")[0].strip()
@@ -2322,16 +2471,7 @@ class Zapret2App(Gtk.Window):
             best_id = outcome.winner
 
             if best_id:
-                if is_zapret2:
-                    self.zapret2_preset = best_id
-                    self.engine_mode = "nfqws2"
-                    best_title = best_id
-                else:
-                    self.active_preset = best_id
-                    self.engine_mode = "nfqws"
-                    best_title = PRESETS.get(best_id, {}).get("title", best_id)
-
-                self.save_config()
+                best_title = best_id if is_zapret2 else PRESETS.get(best_id, {}).get("title", best_id)
 
                 report_lines = [
                     f"🏆 Выбран лучший пресет: {best_title}",
@@ -2366,30 +2506,8 @@ class Zapret2App(Gtk.Window):
                 self.btn_auto_preset.set_label("⚡ Автоподбор лучшего пресета")
 
                 if best_id:
-                    if is_zapret2:
-                        if hasattr(self, "top_tile_preset"):
-                            self.top_tile_preset.set_text(best_id)
-                        if hasattr(self, "pill_preset"):
-                            self.pill_preset.set_text(f"⚡ {best_id}")
-                        if hasattr(self, "combo_engine_mode"):
-                            self.combo_engine_mode.set_active_id("nfqws2")
-                        if hasattr(self, "zapret2_page") and self.zapret2_page:
-                            self.zapret2_page.preset_id = best_id
-                            self.zapret2_page.refresh_catalog()
-                    else:
-                        if hasattr(self, "preset_radios") and best_id in self.preset_radios:
-                            self.preset_radios[best_id].set_active(True)
-                        if hasattr(self, "top_tile_preset"):
-                            self.top_tile_preset.set_text(
-                                PRESETS.get(best_id, {}).get("title", best_id).split("(")[0].strip()
-                            )
-                        if hasattr(self, "pill_preset"):
-                            self.pill_preset.set_text(f"⚡ {PRESETS.get(best_id, {}).get('title', best_id)}")
-                        if hasattr(self, "combo_engine_mode"):
-                            self.combo_engine_mode.set_active_id("nfqws")
+                    winner_applied(best_id)
 
-                self.update_top_tile_mode()
-                self.refresh_status()
                 self.show_dialog("Автоподбор завершен", "\n".join(report_lines))
 
             GLib.idle_add(finish)
@@ -2444,6 +2562,69 @@ class Zapret2App(Gtk.Window):
 
             GLib.idle_add(lambda: self.btn_run_check.set_sensitive(True))
         threading.Thread(target=worker, daemon=True).start()
+
+    def on_classify_tspu(self, _=None):
+        domain = self.entry_tspu_domain.get_text().strip()
+        if not domain:
+            self.update_check_badge(self.tspu_badge, "Ошибка (ERROR)", "badge-bad")
+            self.tspu_diag_buffer.set_text("Ошибка: введите доменное имя для диагностики (например, rutracker.org).\n")
+            return
+
+        self.btn_tspu_classify.set_sensitive(False)
+        self.update_check_badge(self.tspu_badge, "Проверка...", "badge-neutral")
+        self.tspu_diag_buffer.set_text(f"Запуск глубокой диагностики ТСПУ для {domain}...\n")
+
+        def tspu_worker():
+            try:
+                classifier = getattr(self, "dpi_classifier", None)
+                if classifier is not None:
+                    report = classifier.run_diagnostics([domain], mode="auto")
+                else:
+                    report = classify_domains([domain], timeout=3.0, mode="auto")
+
+                if not report or not report.results:
+                    raise RuntimeError("Классификатор не вернул результатов")
+
+                res = report.results[0]
+                verdict = get_block_verdict(res.block_type)
+
+                lines = [
+                    f"=== РЕЗУЛЬТАТ ДИАГНОСТИКИ ТСПУ: {res.target} ===",
+                    f"Тип блокировки (BlockType): {res.block_type.value}",
+                    f"Уровень угрозы: {verdict['severity']}",
+                    f"Краткое описание: {verdict['description']}",
+                    f"Рекомендация: {verdict['recommendation']}",
+                    f"IP адрес: {res.ip or 'не определен'}",
+                    f"Задержка (RTT): {res.rtt_ms} мс",
+                    f"Детали: {res.details or '-'}",
+                    "",
+                    "--- СВОДКА ДИАГНОСТИКИ (summary_text) ---",
+                    report.summary_text(),
+                    "",
+                    "--- СТРУКТУРИРОВАННЫЙ JSON (to_json) ---",
+                    report.to_json(indent=2),
+                ]
+                output_text = "\n".join(lines)
+
+                def update_ui_success():
+                    self.tspu_diag_buffer.set_text(output_text)
+                    self.update_check_badge(self.tspu_badge, verdict["badge_text"], verdict["badge_class"])
+                    self.btn_tspu_classify.set_sensitive(True)
+
+                GLib.idle_add(update_ui_success)
+
+            except Exception as exc:
+                err_text = f"ОШИБКА ДИАГНОСТИКИ:\n{exc}\n"
+
+                def update_ui_error():
+                    self.tspu_diag_buffer.set_text(err_text)
+                    self.update_check_badge(self.tspu_badge, "Ошибка (ERROR)", "badge-bad")
+                    self.btn_tspu_classify.set_sensitive(True)
+
+                GLib.idle_add(update_ui_error)
+
+        self._tspu_thread = threading.Thread(target=tspu_worker, daemon=True)
+        self._tspu_thread.start()
 
     def update_check_badge(self, badge, text, css_cls):
         badge.set_text(text)
