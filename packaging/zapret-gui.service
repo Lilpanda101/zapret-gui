@@ -1,0 +1,16 @@
+[Unit]
+Description=Zapret DPI Bypass Engine
+Documentation=https://github.com/bol-van/zapret
+After=network.target network-online.target nftables.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/zapret-gui/engine.sh start
+ExecStop=/opt/zapret-gui/engine.sh stop
+ExecReload=/opt/zapret-gui/engine.sh restart
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,71 @@
+# Maintainer: Zapret GUI Team
+pkgname=zapret-gui
+pkgver=21.1.7.210
+pkgrel=1
+pkgdesc="GTK3 GUI and management engine for Zapret DPI bypass on Linux"
+arch=('x86_64')
+url="https://github.com/bol-van/zapret"
+license=('MIT')
+depends=('python-gobject' 'gtk3' 'nftables' 'curl')
+optdepends=(
+    'libayatana-appindicator: AppIndicator tray icon support'
+    'polkit: Rootless GUI policy elevation'
+)
+source=()
+sha256sums=()
+
+package() {
+    local install_dir="$pkgdir/opt/zapret-gui"
+    install -d "$install_dir"
+    install -d "$pkgdir/usr/bin"
+    install -d "$pkgdir/usr/share/applications"
+    install -d "$pkgdir/usr/share/icons/hicolor/scalable/apps"
+    install -d "$pkgdir/usr/share/polkit-1/actions"
+    install -d "$pkgdir/usr/lib/systemd/system"
+
+    local src="$srcdir"
+    [ -d "$srcdir/zapret-gui" ] && src="$srcdir/zapret-gui"
+    [ -d "$srcdir/zapret-gui-$pkgver" ] && src="$srcdir/zapret-gui-$pkgver"
+    if [ ! -f "$src/main.py" ] && [ -f "$startdir/../main.py" ]; then
+        src="$startdir/.."
+    elif [ ! -f "$src/main.py" ] && [ -f "$startdir/main.py" ]; then
+        src="$startdir"
+    fi
+
+    # Application core and data
+    cp -a "$src"/*.py "$install_dir/" 2>/dev/null || true
+    cp -a "$src"/*.txt "$install_dir/" 2>/dev/null || true
+    cp -a "$src"/engine.sh "$install_dir/"
+    cp -a "$src"/icon.svg "$install_dir/"
+    cp -a "$src"/moe.zapret.gui.policy "$install_dir/"
+    cp -a "$src"/bin "$install_dir/"
+    cp -a "$src"/fake "$install_dir/"
+    cp -a "$src"/lists "$install_dir/"
+    [ -d "$src/catalog" ] && cp -a "$src"/catalog "$install_dir/"
+    [ -d "$src/zapret2" ] && cp -a "$src"/zapret2 "$install_dir/"
+    [ -d "$src/orchestra" ] && cp -a "$src"/orchestra "$install_dir/"
+
+    chmod 755 "$install_dir/engine.sh" "$install_dir/main.py"
+    chmod -R 755 "$install_dir/bin"
+
+    # Wrapper launcher in /usr/bin
+    cat <<'EOF' > "$pkgdir/usr/bin/zapret-gui"
+#!/usr/bin/env bash
+exec python3 /opt/zapret-gui/main.py "$@"
+EOF
+    chmod 755 "$pkgdir/usr/bin/zapret-gui"
+
+    # Desktop entry
+    install -m644 "$src/packaging/zapret-gui.desktop" "$pkgdir/usr/share/applications/zapret-gui.desktop"
+
+    # Application icon
+    install -m644 "$src/icon.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/zapret-gui.svg"
+
+    # Polkit policy
+    sed "s|<annotate key=\"org.freedesktop.policykit.exec.path\">.*engine.sh</annotate>|<annotate key=\"org.freedesktop.policykit.exec.path\">/opt/zapret-gui/engine.sh</annotate>|g" \
+        "$src/moe.zapret.gui.policy" > "$pkgdir/usr/share/polkit-1/actions/moe.zapret.gui.policy"
+    chmod 644 "$pkgdir/usr/share/polkit-1/actions/moe.zapret.gui.policy"
+
+    # Systemd service unit
+    install -m644 "$src/packaging/zapret-gui.service" "$pkgdir/usr/lib/systemd/system/zapret-gui.service"
+}

@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Zapret 2 GUI
+Name[ru]=Zapret 2 GUI
+GenericName=DPI Bypass Utility
+GenericName[ru]=Обход блокировок DPI
+Comment=GTK3 frontend and management utility for Zapret DPI circumvention
+Comment[ru]=Графический интерфейс и служба управления обходом DPI Zapret
+Exec=zapret-gui
+Icon=zapret-gui
+Terminal=false
+Categories=Network;Security;
+Keywords=zapret;dpi;censorship;bypass;vpn;proxy;nfqws;tpws;
+Keywords[ru]=запрет;дпи;блокировки;обход;прокси;vpn;nfqws;tpws;
+StartupNotify=true
+StartupWMClass=zapret-gui
