@@ -83,6 +83,7 @@ def test_all_136_presets_udp_rules_strict_ct_or_voice():
 
 def test_golden_snapshots_and_nft_syntax():
     import subprocess
+    import shutil
     from pathlib import Path
 
     snap_dir = Path("tests/snapshots")
@@ -103,11 +104,17 @@ def test_golden_snapshots_and_nft_syntax():
         actual = core.render_nftables(adapted.firewall, "eth0")
         assert actual == expected, f"Snapshot mismatch for {pid}"
 
-        # Проверка синтаксиса nftables в unshare
-        res = subprocess.run(["unshare", "-rn", "nft", "-c", "-f", "-"], input=actual, text=True, capture_output=True)
-        if res.returncode == 0:
-            pass  # Синтаксис проверен в изолированном netns ядра
-        elif "Operation not permitted" in res.stderr:
-            pytest.skip("unshare netns not allowed in this environment")
-        else:
-            pytest.fail(f"nft syntax error in {pid}:\n{res.stderr}")
+        # Проверка синтаксиса nftables в unshare (только если бинарники доступны в системе)
+        if not shutil.which("unshare") or not shutil.which("nft"):
+            continue
+
+        try:
+            res = subprocess.run(["unshare", "-rn", "nft", "-c", "-f", "-"], input=actual, text=True, capture_output=True)
+            if res.returncode == 0:
+                pass  # Синтаксис проверен в изолированном netns ядра
+            elif "Operation not permitted" in res.stderr:
+                pytest.skip("unshare netns not allowed in this environment")
+            else:
+                pytest.fail(f"nft syntax error in {pid}:\n{res.stderr}")
+        except FileNotFoundError:
+            continue
