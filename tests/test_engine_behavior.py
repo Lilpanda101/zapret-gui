@@ -336,3 +336,55 @@ def test_status_engine_unprivileged_fallback_without_nft_active_returns_nfqws_on
             proc.wait(timeout=1)
         except subprocess.TimeoutExpired:
             proc.kill()
+
+
+def test_start_engine_under_set_u_does_not_fail_on_unbound_variable(tmp_path):
+    """
+    Ensure engine.sh start / restart runs cleanly under `set -euo pipefail` without
+    crashing on ENABLE_AUTO_HOSTLIST or missing positional parameters.
+    """
+    state_dir = tmp_path / "state"
+    state_dir.mkdir(mode=0o755)
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    (fake_bin / "nft").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    (fake_bin / "nft").chmod(0o755)
+    (fake_bin / "python3").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    (fake_bin / "python3").chmod(0o755)
+    (fake_bin / "sysctl").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    (fake_bin / "sysctl").chmod(0o755)
+
+    test_script = (
+        f"set -euo pipefail\n"
+        f"source '{ENGINE_SH}'\n"
+        f"STATE_DIR='{state_dir}'\n"
+        f"NFQWS2_RUNTIME='{tmp_path}/runtime'\n"
+        f"LOCKFILE='{state_dir}/engine.lock'\n"
+        f"NFT_TABLE='zapret_test'\n"
+        f"LOGFILE='{tmp_path}/test.log'\n"
+        f"PIDFILE='{tmp_path}/test.pid'\n"
+        f"FORCE_LOCK=1\n"
+        f"check_root() {{ return 0; }}\n"
+        f"validate_exec_target() {{ return 0; }}\n"
+        f"get_active_iface() {{ echo 'eth0'; }}\n"
+        f"stop_engine() {{ return 0; }}\n"
+        f"sync_general_hostlist() {{ return 0; }}\n"
+        f"start_nfqws2_engine() {{ return 0; }}\n"
+        # Test start_engine with 0, partial, and 14 parameters under set -u
+        f"start_engine\n"
+        f"start_engine 'general' 'any'\n"
+        f"start_engine 'general' 'any' 'cloudflare' '1' '1' '1' '12' 'all_except_exclude' 'nfqws2' '' 'Default (circular)' '1' '1' '1'\n"
+    )
+
+    env = dict(os.environ)
+    env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+
+    res = subprocess.run(
+        ["bash", "-c", test_script],
+        env=env,
+        capture_output=True,
+        text=True
+    )
+    assert res.returncode == 0, f"start_engine failed under set -u:\nSTDOUT: {res.stdout}\nSTDERR: {res.stderr}"
+

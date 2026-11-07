@@ -203,7 +203,9 @@ class TestHealerStopAndNoBusyLoop:
         assert len(waited_timeouts) == 1
         assert waited_timeouts[0] == 20.0  # 10 * 2^(2-1) = 20.0
 
-    def test_immediate_stop_terminates_thread(self):
+    def test_immediate_stop_terminates_thread(self, monkeypatch):
+        monkeypatch.setattr(healer, "get_engine_status", lambda: (True, "ACTIVE"))
+        monkeypatch.setattr(healer, "check_all_targets", lambda: (True, {}))
         healer_inst = AutoHealer()
         healer_inst.check_interval = 60  # Большой интервал
 
@@ -294,6 +296,8 @@ class TestAutoHealerFSMIntegration:
 
     def test_consecutive_failures_lead_to_degraded(self, monkeypatch):
         h = AutoHealer()
+        h.state.last_restart = 0
+        h.state.restart_history.clear()
         h.fsm.state = HealerFSMState.IDLE
 
         # Эмулируем сбой движка

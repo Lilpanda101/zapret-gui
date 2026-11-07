@@ -604,6 +604,7 @@ start_engine() {
     local ENABLE_YOUTUBE="${12:-1}"
     local ENABLE_DISCORD_TCP="${13:-1}"
     local ENABLE_GENERAL_HTTPS="${14:-1}"
+    local ENABLE_AUTO_HOSTLIST="${15:-0}"
 
     # Validate nfqws2 and all Lua/resources before interrupting a working engine.
     if [ "$ENGINE_MODE" = "nfqws2" ]; then
@@ -611,23 +612,23 @@ start_engine() {
         ACTIVE_IFACE=$(get_active_iface "$IFACE")
         [ -n "$ACTIVE_IFACE" ] || { echo "ERROR: Active network interface not found" >&2; return 1; }
         mkdir -p "$NFQWS2_RUNTIME"
-        local AUTO_HL_OPT=""
+        local AUTO_HL_ARGS=()
         local USER_CFG="$HOME/.config/zapret-gui/config.json"
-        if [ -n "$SUDO_USER" ]; then
+        if [ -n "${SUDO_USER:-}" ]; then
             local U_HOME
             U_HOME="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6)"
             [ -n "$U_HOME" ] && [ -f "$U_HOME/.config/zapret-gui/config.json" ] && USER_CFG="$U_HOME/.config/zapret-gui/config.json"
-        elif [ -n "$PKEXEC_UID" ]; then
+        elif [ -n "${PKEXEC_UID:-}" ]; then
             local U_HOME
             U_HOME="$(getent passwd "$PKEXEC_UID" 2>/dev/null | cut -d: -f6)"
             [ -n "$U_HOME" ] && [ -f "$U_HOME/.config/zapret-gui/config.json" ] && USER_CFG="$U_HOME/.config/zapret-gui/config.json"
         fi
-        if [ "$ENABLE_AUTO_HOSTLIST" = "1" ] || grep -q '"enable_auto_hostlist": true' "$USER_CFG" 2>/dev/null || grep -q '"enable_auto_hostlist": true' "$HOME/.config/zapret-gui/config.json" 2>/dev/null; then
-            AUTO_HL_OPT="--enable-auto-hostlist"
+        if [ "${ENABLE_AUTO_HOSTLIST:-0}" = "1" ] || grep -q '"enable_auto_hostlist": true' "$USER_CFG" 2>/dev/null || grep -q '"enable_auto_hostlist": true' "$HOME/.config/zapret-gui/config.json" 2>/dev/null; then
+            AUTO_HL_ARGS+=("--enable-auto-hostlist")
         fi
         validate_exec_target "$DIR/zapret2_core.py"
         python3 "$DIR/zapret2_core.py" prepare \
-            --preset "$Z2_PRESET" --output "$NFQWS2_RUNTIME" --iface "$ACTIVE_IFACE" $AUTO_HL_OPT || return 1
+            --preset "$Z2_PRESET" --output "$NFQWS2_RUNTIME" --iface "$ACTIVE_IFACE" "${AUTO_HL_ARGS[@]}" || return 1
     fi
 
     # Network conntrack tuning for reliable long-running desync sessions
@@ -1258,31 +1259,38 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     set -euo pipefail
     trap release_lock EXIT INT TERM
 
-    if [ "$1" != "status" ]; then
+    CMD="${1:-}"
+    [ -n "$CMD" ] || {
+        echo "Usage: $0 {start|stop|restart|status|dns|tune|hosts|clean_hosts|sync|ip2net|install_polkit|blockcheck2} [preset] [interface] [dns_provider] [enable_ai_hosts] [enable_quic] [enable_discord_voice] [conntrack_limit] [hostlist_mode] [engine_mode] [custom_params] [zapret2_preset] [enable_youtube] [enable_discord_tcp] [enable_general_https] [enable_auto_hostlist]"
+        exit 1
+    }
+    shift || true
+
+    if [ "$CMD" != "status" ]; then
         check_root
     fi
 
-    case "$1" in
+    case "$CMD" in
         start)
-            start_engine "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}" "${11}" "${12}" "${13}" "${14}" "${15}"
+            start_engine "$@"
             ;;
         stop)
-            stop_engine "$2"
+            stop_engine "${1:-any}"
             ;;
         restart)
-            start_engine "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}" "${11}" "${12}" "${13}" "${14}" "${15}"
+            start_engine "$@"
             ;;
         status)
             status_engine
             ;;
         dns)
-            apply_dns "$2" "$3"
+            apply_dns "${1:-any}" "${2:-cloudflare}"
             ;;
         tune)
             tune_network
             ;;
         hosts)
-            apply_ai_hosts "$2"
+            apply_ai_hosts "${1:-1}"
             ;;
         clean_hosts)
             clean_ai_hosts
@@ -1294,13 +1302,13 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
             build_ipset
             ;;
         blockcheck2)
-            run_blockcheck2 "$2" "$3" "$4"
+            run_blockcheck2 "${1:-rutracker.org}" "${2:-any}" "${3:-cloudflare}"
             ;;
         install_polkit)
             install_polkit
             ;;
         *)
-            echo "Usage: $0 {start|stop|restart|status|dns|tune|hosts|clean_hosts|sync|ip2net|install_polkit|blockcheck2} [preset] [interface] [dns_provider] [enable_ai_hosts] [enable_quic] [enable_discord_voice] [conntrack_limit] [hostlist_mode] [engine_mode] [custom_params] [zapret2_preset] [enable_youtube] [enable_discord_tcp] [enable_general_https]"
+            echo "Usage: $0 {start|stop|restart|status|dns|tune|hosts|clean_hosts|sync|ip2net|install_polkit|blockcheck2} [preset] [interface] [dns_provider] [enable_ai_hosts] [enable_quic] [enable_discord_voice] [conntrack_limit] [hostlist_mode] [engine_mode] [custom_params] [zapret2_preset] [enable_youtube] [enable_discord_tcp] [enable_general_https] [enable_auto_hostlist]"
             exit 1
             ;;
     esac
