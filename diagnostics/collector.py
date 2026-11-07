@@ -147,6 +147,51 @@ def probe_http_80(
         return HttpFacts()
 
 
+def extract_real_tls_cert(
+    ip: str,
+    domain: str,
+    port: int = 443,
+    timeout: float = 3.5,
+    socket_factory: Optional[Callable[..., socket.socket]] = None,
+) -> Tuple[Optional[bool], Optional[bool], str]:
+    """
+    Выполняет реальный TLS handshake к IP с указанным SNI (domain).
+    Возвращает (cert_valid, cert_san_match, cert_issuer).
+    - cert_valid: True если сертификат доверен и валиден, False если поддельный/самоподписанный, None при сбое соединения.
+    - cert_san_match: True если domain совпадает с SAN или CN в сертификате, иначе False.
+    - cert_issuer: издатель сертификата (CA).
+    """
+    if not ip or not domain:
+        return None, None, ""
+    sf = socket_factory or socket.socket
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_REQUIRED
+    try:
+        sock = sf(socket.AF_INET6 if ":" in ip else socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        sock.connect((ip, port))
+        tls_sock = ctx.wrap_socket(sock, server_hostname=domain)
+        cert = tls_sock.getpeercert()
+        tls_sock.close()
+        sans = [v for k, v in cert.get("subjectAltName", []) if k == "DNS"]
+        common_names = [part[0][1] for part in cert.get("subject", ()) if part and part[0][0] == "commonName"]
+        all_names = sans + common_names
+        dom_lower = domain.lower()
+        match = any(
+            dom_lower == san.lower() or (san.startswith("*.") and dom_lower.endswith(san[1:].lower()))
+            for san in all_names
+        )
+        issuer_parts = [f"{part[0][0]}={part[0][1]}" for part in cert.get("issuer", ()) if part]
+        issuer_str = ", ".join(issuer_parts)
+        return True, match, issuer_str
+    except ssl.SSLCertVerificationError as exc:
+        msg = getattr(exc, "verify_message", str(exc))
+        return False, False, f"Ошибка валидации CA: {msg}"
+    except Exception as exc:
+        return None, None, str(exc)
+
+
 class NetworkFactCollector:
     """Сборщик фактов с паузой STAGGER_S (0.25с) между запросами к одному IP."""
 

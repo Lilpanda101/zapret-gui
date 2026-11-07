@@ -69,6 +69,7 @@ from diagnostics.verdict import (
 )
 from diagnostics.collector import (
     NetworkFactCollector,
+    extract_real_tls_cert,
     probe_http_80,
     send_tls_hello,
 )
@@ -124,6 +125,7 @@ __all__ = [
     "judge_dns",
     "judge_service",
     "NetworkFactCollector",
+    "extract_real_tls_cert",
     "probe_http_80",
     "send_tls_hello",
 ]

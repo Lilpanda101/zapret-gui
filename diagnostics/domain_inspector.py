@@ -210,9 +210,9 @@ class DomainInspector:
 
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
+        ctx.verify_mode = ssl.CERT_REQUIRED
 
-        raw_sock = self.socket_factory(socket.AF_INET, socket.SOCK_STREAM)
+        raw_sock = self.socket_factory(socket.AF_INET6 if ":" in ip else socket.AF_INET, socket.SOCK_STREAM)
         raw_sock.settimeout(self.timeout)
         try:
             raw_sock.connect((ip, port))
@@ -222,7 +222,7 @@ class DomainInspector:
             cipher_name = cipher_info[0] if cipher_info else None
 
             # Извлечение сертификата
-            cert = tls_sock.getpeercert(binary_form=False)
+            cert = tls_sock.getpeercert()
             cert_obj = None
             if cert:
                 san_list = [entry[1] for entry in cert.get("subjectAltName", []) if entry[0] == "DNS"]
@@ -236,9 +236,21 @@ class DomainInspector:
                     not_after=cert.get("notAfter", ""),
                     san=san_list,
                     version=cert.get("version", 3),
+                    is_valid_date=True,
                 )
             tls_sock.close()
             return True, ver, cipher_name, cert_obj
+        except ssl.SSLCertVerificationError as exc:
+            try:
+                raw_sock.close()
+            except Exception:
+                pass
+            msg = getattr(exc, "verify_message", str(exc))
+            cert_obj = CertificateInfo(
+                issuer=f"Недостоверный сертификат: {msg}",
+                is_valid_date=False,
+            )
+            return True, "TLS", "UNKNOWN", cert_obj
         except Exception:
             try:
                 raw_sock.close()
@@ -333,32 +345,51 @@ class DomainInspector:
         report.asn_country = asn_country
         report.asn_source = asn_src
 
-        # Итоговое доказательство
-        from diagnostics.classify import classify_network_drop
-        if is_spoofed:
-            pass # уже проставлен выше
+        # Итоговое доказательство и судейство вердиктов
+        from diagnostics.verdict import judge_dns, judge_service, DnsState
+        system_ips = tuple(dns_res.get("system_udp", ()))
+        reference_ips = tuple(dns_res.get("dot_cloudflare", ()) or dns_res.get("tcp_google", ()))
+        cert_valid = cert_obj.is_valid_date if cert_obj else None
+        cert_san_match = None
+        if cert_obj and cert_obj.san:
+            cert_san_match = any(
+                domain == san.lower() or (san.startswith("*.") and domain.endswith(san[1:].lower()))
+                for san in cert_obj.san
+            )
+        elif cert_obj and not cert_obj.san:
+            cert_san_match = True
+
+        dns_j = judge_dns(
+            target=domain,
+            system_ips=system_ips,
+            reference_ips=reference_ips,
+            cert_valid=cert_valid,
+            cert_san_match=cert_san_match,
+            cert_issuer=cert_obj.issuer if cert_obj else "",
+        )
+        if dns_j.state == DnsState.SPOOFED:
+            report.dns_spoofed = True
+            report.dns_details = dns_j.proof
+            report.summary_verdict = "DNS_SPOOFING"
+            report.proof_line = dns_j.proof
+        elif dns_j.state == DnsState.NO_ADDRESS:
+            report.summary_verdict = "DNS_NO_ADDRESS"
+            report.proof_line = dns_j.proof
+        elif not report.dns_spoofed:
+            report.dns_details = dns_j.proof
+
+        if report.dns_spoofed or report.summary_verdict in ("DNS_SPOOFING", "DNS_NO_ADDRESS"):
+            pass
         elif not tcp_ok:
-            drop_v = classify_network_drop(
-                target=domain,
-                tcp_connected=False,
-                tls_connected=False,
-                sni_drop=False,
-                rst_received=False,
-                ip_ping_ok=icmp_ok,
-            )
-            report.summary_verdict = drop_v.verdict.value
-            report.proof_line = drop_v.proof
+            serv_j = judge_service(target=domain, main_ok=False, proof_hint="TCP 443 handshake сброшен или таймаут (L4 drop)")
+            report.summary_verdict = "IP_BLOCK"
+            report.proof_line = serv_j.proof
         elif tcp_ok and not tls_ok:
-            drop_v = classify_network_drop(
-                target=domain,
-                tcp_connected=True,
-                tls_connected=False,
-                sni_drop=True,
-                rst_received=False,
-            )
-            report.summary_verdict = drop_v.verdict.value
-            report.proof_line = drop_v.proof
+            serv_j = judge_service(target=domain, main_ok=False, proof_hint="TCP 443 успешен, сброс сразу после отправки ClientHello (TLS SNI drop)")
+            report.summary_verdict = "TLS_SNI_DROP"
+            report.proof_line = serv_j.proof
         else:
+            serv_j = judge_service(target=domain, main_ok=True, proof_hint=f"Соединение установлено: TCP {tcp_rtt}ms, TLS {tls_ver} ({tls_ciph})")
             report.summary_verdict = "PASS"
             report.proof_line = f"Соединение установлено: TCP {tcp_rtt}ms, TLS {tls_ver} ({tls_ciph})"
 

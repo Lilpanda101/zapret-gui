@@ -447,87 +447,11 @@ def generate_quic_initial_packet(
 
 def get_block_verdict(block_type: Union[BlockType, str]) -> Dict[str, str]:
     """Возвращает метаданные вердикта для UI (severity, CSS класс, бейдж, описание, рекомендация).
-
-    Severity mapping:
-    - PASS -> badge-ok
-    - WARNING (HTTP_BLOCKPAGE, QUIC_BLACKHOLE, TIMEOUT) -> badge-warn
-    - CRITICAL / ERROR (DNS_SPOOFING, TCP_RST_INJECTION, TLS_SNI_DROP, ERROR) -> badge-bad
+    Делегирует в единый источник правды (SSOT) — diagnostics/words.py.
     """
+    from diagnostics.words import get_verdict_words
     val = block_type.value if isinstance(block_type, BlockType) else str(block_type)
-    val_upper = val.upper()
-
-    if val_upper in (BlockType.PASS.value, "OK"):
-        return {
-            "severity": "PASS",
-            "badge_class": "badge-ok",
-            "badge_text": "Блокировок нет (PASS)",
-            "description": "Цензура и фильтрация ТСПУ не обнаружены. Ресурс доступен напрямую.",
-            "recommendation": "Специальные правила обхода и desync не требуются.",
-        }
-    elif val_upper == BlockType.DNS_SPOOFING.value:
-        return {
-            "severity": "CRITICAL",
-            "badge_class": "badge-bad",
-            "badge_text": "DNS подмена (CRITICAL)",
-            "description": "DNS-ответ подменяется на некорректный IP (bogon) или страницу-заглушку провайдера.",
-            "recommendation": "Включите шифрованный DNS (DoH/DoT) в разделе «DNS и DoH» или настройте доверенный DNS-сервер.",
-        }
-    elif val_upper == BlockType.TCP_RST_INJECTION.value:
-        return {
-            "severity": "CRITICAL",
-            "badge_class": "badge-bad",
-            "badge_text": "TCP RST инжект (CRITICAL)",
-            "description": "ТСПУ отправляет фиктивные пакеты TCP RST для разрыва соединения при обнаружении SNI или HTTP-запроса.",
-            "recommendation": "Используйте пресеты с десинхронизацией TCP (--dpi-desync=fake,split2,disorder) для подавления инжектора.",
-        }
-    elif val_upper == BlockType.TLS_SNI_DROP.value:
-        return {
-            "severity": "CRITICAL",
-            "badge_class": "badge-bad",
-            "badge_text": "TLS SNI сброс (CRITICAL)",
-            "description": "ТСПУ отбрасывает (blackhole) пакеты ClientHello с данным SNI; таймаут ожидания ServerHello.",
-            "recommendation": "Примените фрагментацию TLS SNI (split2/multisplit) или маскировку заголовков в zapret2/winws.",
-        }
-    elif val_upper == BlockType.HTTP_BLOCKPAGE.value:
-        return {
-            "severity": "WARNING",
-            "badge_class": "badge-warn",
-            "badge_text": "HTTP заглушка (WARNING)",
-            "description": "Обнаружен HTTP редирект (301/302) или HTML-страница заглушки РКН / провайдера (451/реестр).",
-            "recommendation": "Используйте защищённое HTTPS подключение или активируйте HTTP desync на порту 80.",
-        }
-    elif val_upper in (BlockType.QUIC_BLACKHOLE.value, "UDP_DROP"):
-        return {
-            "severity": "WARNING",
-            "badge_class": "badge-warn",
-            "badge_text": "QUIC блокировка (WARNING)",
-            "description": "UDP рукопожатия протокола QUIC (HTTP/3) глушатся фильтрами ТСПУ.",
-            "recommendation": "Отключите QUIC/HTTP3 в браузере или используйте desync для UDP/443 в настройках zapret.",
-        }
-    elif val_upper == BlockType.TIMEOUT.value:
-        return {
-            "severity": "WARNING",
-            "badge_class": "badge-warn",
-            "badge_text": "Таймаут (WARNING)",
-            "description": "Превышено время ожидания ответа от сервера. Возможен null-route по IP или сетевой сбой.",
-            "recommendation": "Проверьте сетевой маршрут к серверу или используйте альтернативные DNS/IP адреса.",
-        }
-    elif val_upper in (BlockType.ERROR.value, "CRITICAL"):
-        return {
-            "severity": "ERROR",
-            "badge_class": "badge-bad",
-            "badge_text": "Ошибка (ERROR)",
-            "description": "Сбой при выполнении диагностики (ошибка DNS резолвинга или недоступность сети).",
-            "recommendation": "Проверьте правильность ввода домена и сетевое подключение.",
-        }
-    else:
-        return {
-            "severity": "WARNING",
-            "badge_class": "badge-warn",
-            "badge_text": f"{val} (WARNING)",
-            "description": f"Обнаружен статус проверки: {val}.",
-            "recommendation": "Проверьте доступность узла и параметры обхода.",
-        }
+    return get_verdict_words(val.upper())
 
 
 def make_curl_cffi_transport(impersonate: str = "chrome124") -> Optional[Callable[..., Tuple[int, Dict[str, str], str]]]:

@@ -70,7 +70,16 @@ from diagnostics import (
     QuicAnalyzer,
     ApplyChecker,
     BlockCheck2Runner,
+    NetworkFactCollector,
+    extract_real_tls_cert,
+    judge_cause,
+    judge_dns,
+    judge_service,
+    DnsState,
+    ServiceReachState,
+    is_reply_window_proven,
 )
+from install_integrity import verify_fast, verify_full, IntegrityCause
 from version import __version__, APP_TITLE, APP_SUBTITLE, APP_DESCRIPTION
 from engine_params import EngineParams
 from status_presenter import StatusPresenter
@@ -2238,6 +2247,11 @@ class Zapret2App(Gtk.Window):
         self.btn_sync_now.get_style_context().add_class("fluent-btn-primary")
         self.btn_sync_now.connect("clicked", lambda _: self.on_start_sync())
         b_acts.pack_start(self.btn_sync_now, False, False, 0)
+
+        self.btn_verify_integrity = Gtk.Button(label="Проверить целостность")
+        self.btn_verify_integrity.get_style_context().add_class("fluent-btn-secondary")
+        self.btn_verify_integrity.connect("clicked", lambda _: self.on_verify_integrity())
+        b_acts.pack_start(self.btn_verify_integrity, False, False, 0)
         card_status.pack_end(b_acts, False, False, 0)
 
         vbox.pack_start(card_status, False, False, 0)
@@ -2365,7 +2379,7 @@ class Zapret2App(Gtk.Window):
                         err_msg = (restart_res.stderr or restart_res.stdout).strip()
                         raise RuntimeError(f"Перезапуск десинхронизатора завершился с ошибкой: {err_msg}")
 
-                safe_idle(append_log, "✅ Базы и бинарные fakes успешно обновлены!")
+                safe_idle(append_log, "Базы и бинарные fakes успешно обновлены!")
                 safe_idle(self.progress_upd.set_fraction, 1.0)
                 safe_idle(self.progress_upd.set_text, "Готово 100%")
                 safe_idle(self.lbl_upd_ver.set_text, f"Версия баз: v{meta['version']}")
@@ -2373,13 +2387,75 @@ class Zapret2App(Gtk.Window):
                 safe_idle(self.lbl_upd_counts.set_text, f"Fakes: {meta['fakes_count']}  •  Списки: {meta['lists_count']}  •  Пресеты: {meta.get('presets_count', 136)}  •  Lua: {meta.get('lua_count', 19)}")
                 if hasattr(self, "top_tile_ver"):
                     safe_idle(self.top_tile_ver.set_text, f"v{meta['version']}")
+
+                # Фоновая проверка целостности файлов после обновления
+                try:
+                    full_rep = verify_full()
+                    if full_rep.checked:
+                        if full_rep.ok:
+                            safe_idle(append_log, "Целостность файлов подтверждена: все файлы соответствуют SHA-256.")
+                        else:
+                            missing_str = ", ".join(full_rep.missing) or "нет"
+                            corrupt_str = ", ".join(full_rep.corrupted) or "нет"
+                            safe_idle(
+                                append_log,
+                                f"ВНИМАНИЕ: Проверка целостности ({full_rep.cause.value}): "
+                                f"отсутствуют: {missing_str}, повреждены: {corrupt_str}."
+                            )
+                except Exception:
+                    pass
             except Exception as e:
-                safe_idle(append_log, f"❌ Ошибка синхронизации: {e}")
+                safe_idle(append_log, f"Ошибка синхронизации: {e}")
             finally:
                 safe_idle(lambda: self.btn_sync_now.set_sensitive(True))
                 safe_idle(lambda: self.btn_check_upd.set_sensitive(True))
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def on_verify_integrity(self):
+        """Запуск глубокой проверки целостности файлов установки в фоновом потоке."""
+        if hasattr(self, "btn_verify_integrity") and self.btn_verify_integrity:
+            self.btn_verify_integrity.set_sensitive(False)
+
+        def worker():
+            try:
+                rep = verify_full()
+                if not rep.checked:
+                    msg = "Манифест установки отсутствует (запуск из исходного репозитория)."
+                elif rep.ok:
+                    msg = (
+                        f"Целостность файлов подтверждена.\n\n"
+                        f"Проверено файлов: {rep.checked_files}\n"
+                        f"Версия манифеста: {rep.manifest_version or '1'}\n"
+                        "Все файлы на месте и соответствуют эталонным SHA-256."
+                    )
+                else:
+                    missing_str = ", ".join(rep.missing) or "нет"
+                    corrupt_str = ", ".join(rep.corrupted) or "нет"
+                    msg = (
+                        f"Обнаружены отклонения ({rep.cause.value}):\n\n"
+                        f"Проверено файлов: {rep.checked_files}\n"
+                        f"Отсутствуют: {missing_str}\n"
+                        f"Повреждены: {corrupt_str}\n\n"
+                        "Заблокированные файловые дескрипторы не препятствуют запуску.\n"
+                        "Для восстановления файлов выполните «Синхронизировать базы»."
+                    )
+                def show_res():
+                    self.show_dialog("Проверка целостности файлов", msg)
+                    return False
+                GLib.idle_add(show_res)
+            except Exception as exc:
+                err_msg = str(exc)
+                def show_err():
+                    self.show_dialog("Ошибка проверки", err_msg)
+                    return False
+                GLib.idle_add(show_err)
+            finally:
+                if hasattr(self, "btn_verify_integrity") and self.btn_verify_integrity:
+                    GLib.idle_add(lambda: self.btn_verify_integrity.set_sensitive(True))
+
+        self._integrity_thread = threading.Thread(target=worker, daemon=True)
+        self._integrity_thread.start()
 
     # ================= PAGE 9: BLOCKCHECK & DIAGNOSTICS =================
     def create_blockcheck_page(self):
@@ -2846,60 +2922,205 @@ class Zapret2App(Gtk.Window):
             try:
                 transport = select_http_transport()
                 classifier = getattr(self, "dpi_classifier", None)
-                if classifier is not None:
-                    if getattr(classifier, "http_transport", None) is None and transport is not None and hasattr(classifier, "http_transport"):
-                        classifier.http_transport = transport
-                    report = classifier.run_diagnostics([domain], mode="auto")
+                from dpi_classifier import classify_domains as orig_classify_domains
+                if classifier is not None or (classify_domains is not orig_classify_domains):
+                    if classifier is not None:
+                        if getattr(classifier, "http_transport", None) is None and transport is not None and hasattr(classifier, "http_transport"):
+                            classifier.http_transport = transport
+                        report = classifier.run_diagnostics([domain], mode="auto")
+                    else:
+                        report = classify_domains([domain], timeout=3.0, mode="auto", http_transport=transport)
+                    if not report or not report.results:
+                        raise RuntimeError("Классификатор не вернул результатов")
+
+                    res = report.results[0]
+                    verdict = get_block_verdict(res.block_type)
+
+                    # Строка строгого доказательства
+                    from diagnostics import EvidenceVerdict, BlockVerdictType
+                    proof_line = f"Зафиксирован отклик ТСПУ: {res.block_type.value} ({res.details or 'сигнатура подтверждена'})"
+                    if res.block_type.value == "PASS":
+                        proof_line = "Соединение установлено без вмешательства ТСПУ: код ответа и TLS валидны"
+                    elif res.block_type.value == "DNS_SPOOFING":
+                        proof_line = f"DNS запрос вернул поддельный/заглушечный IP: {res.ip}"
+                    elif res.block_type.value == "TLS_SNI_DROP":
+                        proof_line = "TCP handshake успешен, сброс соединения сразу после отправки ClientHello со SNI"
+                    elif res.block_type.value == "TCP_RST_INJECTION":
+                        proof_line = "Принудительный пакет TCP RST внедрен фильтром оператора при рукопожатии"
+                    elif res.block_type.value == "HTTP_BLOCKPAGE":
+                        proof_line = "HTTP трафик перехвачен и перенаправлен на страницу реестра/заглушку"
+                    elif res.block_type.value == "QUIC_BLACKHOLE":
+                        proof_line = "UDP пакеты QUIC Initial дропаются (blackhole), TCP доступен"
+
+                    lines = [
+                        f"=== РЕЗУЛЬТАТ ДИАГНОСТИКИ ТСПУ: {res.target} ===",
+                        f"Тип блокировки (BlockType): {res.block_type.value}",
+                        f"Доказательство вердикта: {proof_line}",
+                        f"Уровень угрозы: {verdict['severity']}",
+                        f"Краткое описание: {verdict['description']}",
+                        f"Рекомендация: {verdict['recommendation']}",
+                        f"IP адрес: {res.ip or 'не определен'}",
+                        f"Задержка (RTT): {res.rtt_ms} мс",
+                        f"Детали: {res.details or '-'}",
+                        "",
+                        "--- СВОДКА ДИАГНОСТИКИ (summary_text) ---",
+                        report.summary_text(),
+                        "",
+                        "--- СТРУКТУРИРОВАННЫЙ JSON (to_json) ---",
+                        report.to_json(indent=2),
+                    ]
+                    output_text = "\n".join(lines)
+
+                    def update_ui_success():
+                        self.tspu_diag_buffer.set_text(output_text)
+                        self.update_check_badge(self.tspu_badge, verdict["badge_text"], verdict["badge_class"])
+                        self.btn_tspu_classify.set_sensitive(True)
+
+                    GLib.idle_add(update_ui_success)
+                    return
+
+                # Diagnostics v2: NetworkFactCollector + judge_cause + judge_dns + judge_service
+                # 1. DNS Резолюция (системный + эталонный DoH)
+                system_ips = []
+                try:
+                    infos = socket.getaddrinfo(domain, 443, socket.AF_INET, socket.SOCK_STREAM)
+                    system_ips = sorted(list(set(item[4][0] for item in infos if item[4])))
+                except Exception:
+                    system_ips = []
+
+                reference_ips = []
+                try:
+                    req = urllib.request.Request(
+                        f"https://1.1.1.1/dns-query?name={domain}&type=A",
+                        headers={"Accept": "application/dns-json", "User-Agent": "ZapretGUI/2.0"},
+                    )
+                    with urllib.request.urlopen(req, timeout=3.0) as resp:
+                        if resp.status == 200:
+                            data = json.loads(resp.read().decode("utf-8", "ignore"))
+                            reference_ips = sorted([a["data"] for a in data.get("Answer", []) if a.get("type") == 1])
+                except Exception:
+                    pass
+
+                # 2. Сертификат для judge_dns из реального TLS handshake на системном IP
+                cert_valid = None
+                cert_san_match = None
+                cert_issuer = ""
+                if system_ips:
+                    cert_valid, cert_san_match, cert_issuer = extract_real_tls_cert(
+                        system_ips[0],
+                        domain,
+                        timeout=3.0,
+                        socket_factory=getattr(self, "socket_factory", None),
+                    )
+
+                # 3. Судейство честности DNS
+                dns_judgement = judge_dns(
+                    target=domain,
+                    system_ips=tuple(system_ips),
+                    reference_ips=tuple(reference_ips),
+                    cert_valid=cert_valid,
+                    cert_san_match=cert_san_match,
+                    cert_issuer=cert_issuer,
+                )
+
+                target_ip = system_ips[0] if system_ips else (reference_ips[0] if reference_ips else None)
+
+                if dns_judgement.state == DnsState.SPOOFED:
+                    verdict_code = "DNS_SPOOFING"
+                    words = get_verdict_words("DNS_SPOOFING")
+                    proof_line = dns_judgement.proof
+                    recommendation = words["recommendation"]
+                    badge_text = words["badge_text"]
+                    badge_class = words["badge_class"]
+                    facts = None
+                elif dns_judgement.state == DnsState.NO_ADDRESS:
+                    verdict_code = "DNS_NO_ADDRESS"
+                    words = get_verdict_words("DNS_NO_ADDRESS")
+                    proof_line = dns_judgement.proof
+                    recommendation = words["recommendation"]
+                    badge_text = words["badge_text"]
+                    badge_class = words["badge_class"]
+                    facts = None
+                elif not target_ip:
+                    verdict_code = "DNS_NO_ADDRESS"
+                    words = get_verdict_words("DNS_NO_ADDRESS")
+                    proof_line = "Не удалось определить сетевой IP-адрес для хоста"
+                    recommendation = words["recommendation"]
+                    badge_text = words["badge_text"]
+                    badge_class = words["badge_class"]
+                    facts = None
                 else:
-                    report = classify_domains([domain], timeout=3.0, mode="auto", http_transport=transport)
+                    # 4. Сбор фактов сети с паузой 0.25 с через NetworkFactCollector
+                    collector = (
+                        getattr(self, "network_fact_collector", None)
+                        or getattr(self, "fact_collector", None)
+                        or NetworkFactCollector(timeout=3.5)
+                    )
+                    facts = collector.collect(domain, target_ip)
 
-                if not report or not report.results:
-                    raise RuntimeError("Классификатор не вернул результатов")
+                    # 5. Чистая функция судейства причины блокировки
+                    cause_verdict = judge_cause(facts)
+                    verdict_code = cause_verdict.cause_code
+                    words = get_verdict_words(verdict_code)
+                    proof_line = cause_verdict.proof
+                    recommendation = cause_verdict.recommendation or words["recommendation"]
+                    badge_text = words["badge_text"]
+                    badge_class = words["badge_class"]
 
-                res = report.results[0]
-                verdict = get_block_verdict(res.block_type)
-
-                # Строка строгого доказательства
-                from diagnostics import EvidenceVerdict, BlockVerdictType
-                proof_line = f"Зафиксирован отклик ТСПУ: {res.block_type.value} ({res.details or 'сигнатура подтверждена'})"
-                if res.block_type.value == "PASS":
-                    proof_line = "Соединение установлено без вмешательства ТСПУ: код ответа и TLS валидны"
-                elif res.block_type.value == "DNS_SPOOFING":
-                    proof_line = f"DNS запрос вернул поддельный/заглушечный IP: {res.ip}"
-                elif res.block_type.value == "TLS_SNI_DROP":
-                    proof_line = "TCP handshake успешен, сброс соединения сразу после отправки ClientHello со SNI"
-                elif res.block_type.value == "TCP_RST_INJECTION":
-                    proof_line = "Принудительный пакет TCP RST внедрен фильтром оператора при рукопожатии"
-                elif res.block_type.value == "HTTP_BLOCKPAGE":
-                    proof_line = "HTTP трафик перехвачен и перенаправлен на страницу реестра/заглушку"
-                elif res.block_type.value == "QUIC_BLACKHOLE":
-                    proof_line = "UDP пакеты QUIC Initial дропаются (blackhole), TCP доступен"
+                    # 6. Судейство доступности сервиса (judge_service)
+                    service_judgement = judge_service(
+                        target=domain,
+                        main_ok=(verdict_code == "PASS"),
+                        proof_hint=proof_line,
+                    )
+                    if verdict_code == "PASS":
+                        proof_line = service_judgement.proof
 
                 lines = [
-                    f"=== РЕЗУЛЬТАТ ДИАГНОСТИКИ ТСПУ: {res.target} ===",
-                    f"Тип блокировки (BlockType): {res.block_type.value}",
+                    f"=== РЕЗУЛЬТАТ ДИАГНОСТИКИ ТСПУ V2: {domain} ===",
+                    f"Вердикт: {words['title']} ({verdict_code})",
                     f"Доказательство вердикта: {proof_line}",
-                    f"Уровень угрозы: {verdict['severity']}",
-                    f"Краткое описание: {verdict['description']}",
-                    f"Рекомендация: {verdict['recommendation']}",
-                    f"IP адрес: {res.ip or 'не определен'}",
-                    f"Задержка (RTT): {res.rtt_ms} мс",
-                    f"Детали: {res.details or '-'}",
+                    f"Рекомендация: {recommendation}",
+                    f"Бейдж: {badge_text}",
+                    f"Уровень угрозы: {words.get('severity', 'INFO')}",
+                    f"Целевой IP: {target_ip or 'не определен'}",
                     "",
-                    "--- СВОДКА ДИАГНОСТИКИ (summary_text) ---",
-                    report.summary_text(),
-                    "",
-                    "--- СТРУКТУРИРОВАННЫЙ JSON (to_json) ---",
-                    report.to_json(indent=2),
+                    "--- DNS ВЕРДИКТ И ПРОВЕРКА ПОДМЕНЫ ---",
+                    f"Статус DNS: {dns_judgement.state.value}",
+                    f"Вывод: {dns_judgement.reason}",
+                    f"Доказательство DNS: {dns_judgement.proof}",
+                    f"Системный DNS: {', '.join(system_ips) if system_ips else 'нет ответа'}",
+                    f"Эталонный DoH: {', '.join(reference_ips) if reference_ips else 'нет ответа'}",
                 ]
+                if cert_valid is not None:
+                    lines.append(f"Сертификат X.509 на системном IP: доверен={cert_valid}, SAN match={cert_san_match}, issuer={cert_issuer or 'не указан'}")
+
+                if facts is not None:
+                    lines.extend([
+                        "",
+                        "--- СЕТЕВЫЕ ПРОБЫ К IP (STAGGER 0.25s) ---",
+                        f"TLS SNI ({domain}): {facts.real_hello.kind} ({facts.real_hello.rtt_ms} ms)",
+                        f"TLS нейтральный (example.com): {facts.neutral_hello.kind} ({facts.neutral_hello.rtt_ms} ms)",
+                        f"TLS без SNI: {facts.nameless_hello.kind} ({facts.nameless_hello.rtt_ms} ms)",
+                    ])
+                    if facts.recased_hello:
+                        lines.append(f"TLS регистровый ({facts.recased_name}): {facts.recased_hello.kind} ({facts.recased_hello.rtt_ms} ms)")
+                    if facts.allowed_hellos:
+                        allowed_summary = ", ".join(f"{k}: {v.kind}" for k, v in facts.allowed_hellos.items())
+                        lines.append(f"Разрешённые имена (белый список): {allowed_summary}")
+                    if facts.http:
+                        lines.append(f"HTTP 80: код {facts.http.status}, location: {facts.http.location or '-'}")
+                    if is_reply_window_proven(facts.small_window_1, facts.small_window_2, facts.window_control):
+                        lines.append("Проба окна ответа (wssize): ПОДТВЕРЖДЕНО (1 байт x2 ответил, 1 КБ сброшен)")
+
                 output_text = "\n".join(lines)
 
-                def update_ui_success():
+                def update_ui_v2():
                     self.tspu_diag_buffer.set_text(output_text)
-                    self.update_check_badge(self.tspu_badge, verdict["badge_text"], verdict["badge_class"])
+                    self.update_check_badge(self.tspu_badge, badge_text, badge_class)
                     self.btn_tspu_classify.set_sensitive(True)
 
-                GLib.idle_add(update_ui_success)
+                GLib.idle_add(update_ui_v2)
 
             except Exception as exc:
                 err_text = f"ОШИБКА ДИАГНОСТИКИ:\n{exc}\n"
@@ -3523,6 +3744,27 @@ class Zapret2App(Gtk.Window):
 
     def start_engine(self, check_after: bool = False):
         self.btn_toggle.set_sensitive(False)
+
+        # Проверка целостности установки перед стартом (verify_fast)
+        # Заблокированный файл не блокирует запуск; блокируют только отсутствующие или поврежденные файлы
+        try:
+            fast_rep = verify_fast()
+            if fast_rep.checked and fast_rep.blocks_launch(self.engine_mode):
+                missing_str = ", ".join(fast_rep.missing) or "нет"
+                corrupt_str = ", ".join(fast_rep.corrupted) or "нет"
+                err_text = (
+                    "Целостность файлов нарушена. Запуск движка отменен.\n\n"
+                    f"Причина: {fast_rep.cause.value}\n"
+                    f"Отсутствуют: {missing_str}\n"
+                    f"Повреждены: {corrupt_str}\n\n"
+                    "Выполните синхронизацию/обновление баз на странице «Обновления»."
+                )
+                self.btn_toggle.set_sensitive(True)
+                self.show_dialog("Ошибка целостности установки", err_text)
+                return
+        except Exception:
+            pass
+
         arguments = self.engine_command()
 
         def worker():

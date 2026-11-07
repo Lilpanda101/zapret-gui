@@ -107,9 +107,12 @@ class BlockCheck2Runner:
             else:
                 # Движок не был запущен -> обязательно восстанавливаем системный DNS
                 try:
-                    self.run_engine("dns", self.active_iface, "system")
-                except Exception:
-                    pass
+                    restored_dns = self.run_engine("dns", self.active_iface, "system")
+                    if getattr(restored_dns, "returncode", 0) != 0:
+                        err = getattr(restored_dns, "stderr", "") or getattr(restored_dns, "stdout", "")
+                        restore_error = f"\n\nОШИБКА ВОССТАНОВЛЕНИЯ DNS:\n{err}"
+                except Exception as exc:
+                    restore_error = f"\n\nОШИБКА ВОССТАНОВЛЕНИЯ DNS:\n{exc}"
 
         full_output = "\n".join(output_chunks)
         strategies = self.parse_strategies(full_output)

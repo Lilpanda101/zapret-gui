@@ -1185,12 +1185,14 @@ run_blockcheck2() {
     apply_dns "$IFACE" "$DNS_PROVIDER"
     sleep 1
     echo "Running non-interactive Blockcheck2 for $DOMAIN. Other bypass engines must be stopped."
+    local RC=0
     timeout 900 env BATCH=1 TEST=standard DOMAINS="$DOMAIN" IPVS=4 \
         ENABLE_HTTP=0 ENABLE_HTTPS_TLS12=1 ENABLE_HTTPS_TLS13=0 ENABLE_HTTP3=0 \
         REPEATS=1 PARALLEL=0 SCANLEVEL=veryquick \
-        /opt/zapret2/blockcheck2.sh || true
+        /opt/zapret2/blockcheck2.sh || RC=$?
     trap - EXIT INT TERM
     restore_blockcheck_dns
+    return $RC
 }
 
 sync_bases() {
