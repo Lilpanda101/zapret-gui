@@ -225,3 +225,114 @@ def test_wait_for_process_start_nfqws1_fallback_without_hint(tmp_path):
             proc.wait(timeout=1)
         except subprocess.TimeoutExpired:
             proc.kill()
+
+
+def test_init_state_dir_sets_0755_permissions(tmp_path):
+    """
+    Ensure init_state_dir sets 0755 directory mode (rwxr-xr-x) so that
+    unprivileged GUI processes can inspect nft-active and pid files.
+    """
+    state_dir = tmp_path / "state_test"
+    state_dir.mkdir()
+    # Emulate previously restrictive 0700 permissions
+    state_dir.chmod(0o700)
+    assert stat.S_IMODE(state_dir.stat().st_mode) == 0o700
+
+    bash_cmd = (
+        f"source '{ENGINE_SH}'\n"
+        f"STATE_DIR='{state_dir}'\n"
+        f"EFFECTIVE_UID=0\n"
+        f"init_state_dir\n"
+    )
+    res = subprocess.run(["bash", "-c", bash_cmd], capture_output=True, text=True)
+    assert res.returncode == 0, f"init_state_dir failed: {res.stderr}"
+    assert stat.S_IMODE(state_dir.stat().st_mode) == 0o755, "STATE_DIR must be 0755 for unprivileged access"
+
+
+def test_status_engine_unprivileged_fallback_with_nft_active_returns_active(tmp_path):
+    """
+    When running as unprivileged user (EUID!=0), direct `nft list` fails (CAP_NET_ADMIN required).
+    If the daemon process is alive and $STATE_DIR/nft-active exists, status_engine must
+    honour the marker and output ACTIVE with exit code 0.
+    """
+    state_dir = tmp_path / "state"
+    state_dir.mkdir(mode=0o755)
+    marker = state_dir / "nft-active"
+    marker.write_text("", encoding="utf-8")
+    marker.chmod(0o644)
+
+    pid_file = state_dir / "zapret-gui.pid"
+    proc = subprocess.Popen(["sleep", "10"])
+    pid_file.write_text(str(proc.pid), encoding="utf-8")
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    # Mock systemctl to report inactive, so status_engine checks PIDFILE
+    (fake_bin / "systemctl").write_text("#!/bin/sh\nexit 3\n", encoding="utf-8")
+    (fake_bin / "systemctl").chmod(0o755)
+    # Mock nft to simulate unprivileged permission denied
+    (fake_bin / "nft").write_text("#!/bin/sh\necho 'Error: Could not process rule: Permission denied' >&2\nexit 1\n", encoding="utf-8")
+    (fake_bin / "nft").chmod(0o755)
+
+    try:
+        bash_cmd = (
+            f"source '{ENGINE_SH}'\n"
+            f"STATE_DIR='{state_dir}'\n"
+            f"PIDFILE='{pid_file}'\n"
+            f"NFT_TABLE='zapret_test'\n"
+            f"EFFECTIVE_UID=1000\n"
+            f"status_engine\n"
+        )
+        env = dict(os.environ)
+        env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+
+        res = subprocess.run(["bash", "-c", bash_cmd], env=env, capture_output=True, text=True)
+        assert res.returncode == 0, f"Expected ACTIVE (0), got {res.returncode}: stdout={res.stdout}, stderr={res.stderr}"
+        assert res.stdout.strip() == "ACTIVE"
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+
+def test_status_engine_unprivileged_fallback_without_nft_active_returns_nfqws_only(tmp_path):
+    """
+    When running as unprivileged user and nft-active is missing/deleted,
+    status_engine must report NFQWS_ONLY with exit code 2.
+    """
+    state_dir = tmp_path / "state"
+    state_dir.mkdir(mode=0o755)
+    pid_file = state_dir / "zapret-gui.pid"
+    proc = subprocess.Popen(["sleep", "10"])
+    pid_file.write_text(str(proc.pid), encoding="utf-8")
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    (fake_bin / "systemctl").write_text("#!/bin/sh\nexit 3\n", encoding="utf-8")
+    (fake_bin / "systemctl").chmod(0o755)
+    (fake_bin / "nft").write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    (fake_bin / "nft").chmod(0o755)
+
+    try:
+        bash_cmd = (
+            f"source '{ENGINE_SH}'\n"
+            f"STATE_DIR='{state_dir}'\n"
+            f"PIDFILE='{pid_file}'\n"
+            f"NFT_TABLE='zapret_test'\n"
+            f"EFFECTIVE_UID=1000\n"
+            f"status_engine\n"
+        )
+        env = dict(os.environ)
+        env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+
+        res = subprocess.run(["bash", "-c", bash_cmd], env=env, capture_output=True, text=True)
+        assert res.returncode == 2, f"Expected NFQWS_ONLY (2), got {res.returncode}: stdout={res.stdout}, stderr={res.stderr}"
+        assert res.stdout.strip() == "NFQWS_ONLY"
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            proc.kill()

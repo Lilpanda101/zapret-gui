@@ -19,18 +19,16 @@ QNUM=200
 NFQWS2_RUNTIME="/etc/zapret/zapret2-runtime"
 NFQWS2_STATE_DIR="/run/zapret-gui"
 
-# Ensure /run exists and initialize state directory with 0700 root:root
+# Ensure /run exists and initialize state directory with 0755 root:root (accessible for unprivileged status checks)
 init_state_dir() {
     if [ ! -d "/run" ]; then
         echo "ERROR: /run directory is not available. Non-systemd or broken environment detected." >&2
         exit 1
     fi
-    if [ "$EUID" -eq 0 ]; then
-        if [ ! -d "$STATE_DIR" ]; then
-            mkdir -p "$STATE_DIR"
-            chmod 0700 "$STATE_DIR"
-            chown root:root "$STATE_DIR" 2>/dev/null || true
-        fi
+    if [ "${EFFECTIVE_UID:-$EUID}" -eq 0 ]; then
+        mkdir -p "$STATE_DIR"
+        chmod 0755 "$STATE_DIR" 2>/dev/null || true
+        chown root:root "$STATE_DIR" 2>/dev/null || true
     fi
 }
 
@@ -478,6 +476,7 @@ stop_engine() {
 }
 
 status_engine() {
+    init_state_dir
     local RUNNING=0
     if systemctl is-active --quiet zapret-nfqws 2>/dev/null \
         || systemctl is-active --quiet zapret2-nfqws 2>/dev/null \
@@ -503,9 +502,10 @@ status_engine() {
     # Check kernel table directly (Single Source of Truth)
     if nft list table inet "$NFT_TABLE" >/dev/null 2>&1; then
         : > "$STATE_DIR/nft-active" 2>/dev/null || true
+        chmod 0644 "$STATE_DIR/nft-active" 2>/dev/null || true
         echo "ACTIVE"
         exit 0
-    elif [ "$EUID" -ne 0 ] && [ -f "$STATE_DIR/nft-active" ]; then
+    elif [ "${EFFECTIVE_UID:-$EUID}" -ne 0 ] && [ -f "$STATE_DIR/nft-active" ]; then
         # When unprivileged user cannot inspect kernel netlink, fallback to root marker
         echo "ACTIVE"
         exit 0
@@ -572,6 +572,7 @@ start_nfqws2_engine() {
         echo "systemd-run failed; launching nfqws2 directly..."
         nohup /usr/bin/python3 "$DIR/zapret2_core.py" run --runtime "$NFQWS2_RUNTIME" >> "$LOGFILE" 2>&1 &
         echo $! > "$PIDFILE"
+        chmod 0644 "$PIDFILE" 2>/dev/null || true
     fi
 
     if ! wait_for_process_start "zapret2-nfqws" "$PIDFILE" 5 "zapret2_core|nfqws2|nfqws"; then
@@ -581,6 +582,7 @@ start_nfqws2_engine() {
 
     # Only mark active and configure DNS AFTER process is guaranteed alive
     : > "$STATE_DIR/nft-active"
+    chmod 0644 "$STATE_DIR/nft-active" 2>/dev/null || true
     apply_dns "$IFACE" "$DNS_PROVIDER"
     apply_ai_hosts "$ENABLE_AI_HOSTS"
     echo "Zapret2 nfqws2 started with PID: $(cat "$PIDFILE")"
@@ -678,6 +680,7 @@ start_engine() {
             echo "systemd-run failed; launching tpws directly..."
             nohup "$DIR/bin/tpws" --bind-addr=127.0.0.1 --port=1080 --socks --split-pos=1,midsld --disorder --hostcase --domcase >> "$LOGFILE" 2>&1 &
             echo $! > "$PIDFILE"
+            chmod 0644 "$PIDFILE" 2>/dev/null || true
         fi
 
         if ! wait_for_process_start "zapret-tpws" "$PIDFILE" 5 "tpws"; then
@@ -1132,6 +1135,7 @@ WATCHDOG_EOF
         echo "systemd-run failed; launching nfqws directly..."
         nohup "$BIN" "${ARGS[@]}" >> "$LOGFILE" 2>&1 &
         echo $! > "$PIDFILE"
+        chmod 0644 "$PIDFILE" 2>/dev/null || true
     fi
 
     # Start watchdog service
@@ -1147,6 +1151,7 @@ WATCHDOG_EOF
     fi
 
     : > "$STATE_DIR/nft-active"
+    chmod 0644 "$STATE_DIR/nft-active" 2>/dev/null || true
     apply_dns "$IFACE" "$DNS_PROVIDER"
     apply_ai_hosts "$ENABLE_AI_HOSTS"
 
