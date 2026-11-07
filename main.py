@@ -40,7 +40,14 @@ from updater import ZapretUpdater, get_update_meta, MirrorHealthMonitor
 from healer import get_healer, HEALER_LOG
 from zapret2_ui import Zapret2Page
 from catalog.preset_catalog import PresetCatalog
-from orchestra import Orchestrator, HistoryStore, http_probe, default_targets
+from orchestra import (
+    Orchestrator,
+    HistoryStore,
+    http_probe,
+    default_targets,
+    select_probe,
+    select_http_transport,
+)
 from orchestra_ui import create_orchestra_page, OrchestraWidget, NetworkManagerMonitor
 from dpi_classifier import (
     BlockType,
@@ -2555,7 +2562,7 @@ class Zapret2App(Gtk.Window):
         defaults = {
             "app": self,
             "apply_preset": apply_fn,
-            "probe": http_probe,
+            "probe": select_probe(),
         }
         if os.path.isdir(catalog_path):
             try:
@@ -2663,7 +2670,7 @@ class Zapret2App(Gtk.Window):
 
         orchestrator = Orchestrator(
             apply_preset=apply_preset,
-            probe=http_probe,
+            probe=select_probe(),
             targets=default_targets(),
             attempts=3,
             required_successes=2,
@@ -2784,11 +2791,14 @@ class Zapret2App(Gtk.Window):
 
         def tspu_worker():
             try:
+                transport = select_http_transport()
                 classifier = getattr(self, "dpi_classifier", None)
                 if classifier is not None:
+                    if getattr(classifier, "http_transport", None) is None and transport is not None and hasattr(classifier, "http_transport"):
+                        classifier.http_transport = transport
                     report = classifier.run_diagnostics([domain], mode="auto")
                 else:
-                    report = classify_domains([domain], timeout=3.0, mode="auto")
+                    report = classify_domains([domain], timeout=3.0, mode="auto", http_transport=transport)
 
                 if not report or not report.results:
                     raise RuntimeError("Классификатор не вернул результатов")

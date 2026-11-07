@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 import healer
 import main
 from main import Zapret2App
+from orchestra.targets import http_probe
 
 
 def dummy_app():
@@ -109,6 +110,7 @@ def test_auto_preset_nfqws2_candidates_and_mode_preservation(monkeypatch):
     app = setup_interactive_app(engine_mode="nfqws2")
     captured_runs = []
 
+    monkeypatch.setattr(main, "select_probe", lambda: http_probe)
     monkeypatch.setattr(main.threading, "Thread", lambda target, daemon=True: SimpleNamespace(start=target))
     monkeypatch.setattr(main.time, "sleep", lambda s: None)
     monkeypatch.setattr(main.GLib, "idle_add", lambda func, *args, **kwargs: func(*args, **kwargs))
@@ -171,6 +173,7 @@ def test_auto_preset_nfqws_mode(monkeypatch):
     app = setup_interactive_app(engine_mode="nfqws")
     captured_runs = []
 
+    monkeypatch.setattr(main, "select_probe", lambda: http_probe)
     monkeypatch.setattr(main.threading, "Thread", lambda target, daemon=True: SimpleNamespace(start=target))
     monkeypatch.setattr(main.time, "sleep", lambda s: None)
     monkeypatch.setattr(main.GLib, "idle_add", lambda func, *args, **kwargs: func(*args, **kwargs))
@@ -203,6 +206,7 @@ def test_auto_preset_markers(monkeypatch):
     app = setup_interactive_app(engine_mode="nfqws2")
     requested_urls = []
 
+    monkeypatch.setattr(main, "select_probe", lambda: http_probe)
     monkeypatch.setattr(main.threading, "Thread", lambda target, daemon=True: SimpleNamespace(start=target))
     monkeypatch.setattr(main.time, "sleep", lambda s: None)
     monkeypatch.setattr(main.GLib, "idle_add", lambda func, *args, **kwargs: func(*args, **kwargs))

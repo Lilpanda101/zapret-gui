@@ -43,7 +43,15 @@ try:
 except Exception:
     HAS_DBUS = False
 
-from orchestra.targets import Target, ProbeResult, DEFAULT_TARGETS, default_targets, http_probe
+from orchestra.targets import (
+    Target,
+    ProbeResult,
+    DEFAULT_TARGETS,
+    default_targets,
+    http_probe,
+    select_probe,
+    get_probe_transport_name,
+)
 from orchestra.history import HistoryStore, RunRecord
 from orchestra.orchestrator import Orchestrator, OrchestratorResult, PresetResult, TargetResult
 from catalog.preset_catalog import PresetCatalog, PresetEntry
@@ -525,7 +533,7 @@ class OrchestraWidget(Gtk.Box):
         self.app = app
         self.catalog = catalog or self._load_default_catalog()
         self.apply_preset_fn = apply_preset or self._default_apply_preset
-        self.probe_fn = probe or http_probe
+        self.probe_fn = probe if probe is not None else select_probe()
         self.targets = targets or default_targets()
         self.history_store = history or HistoryStore(
             Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "zapret-gui" / "orchestra_history.jsonl"
@@ -697,6 +705,11 @@ class OrchestraWidget(Gtk.Box):
         status_bottom_box.pack_start(self.lbl_current_preset, True, True, 0)
         status_bottom_box.pack_end(self.lbl_winner, False, False, 0)
         progress_card.pack_start(status_bottom_box, False, False, 0)
+
+        transport_name = get_probe_transport_name(self.probe_fn)
+        self.lbl_transport = Gtk.Label(label=f"Транспорт проб: {transport_name}", xalign=0)
+        self.lbl_transport.get_style_context().add_class("page-subtitle")
+        progress_card.pack_start(self.lbl_transport, False, False, 0)
 
         self.pack_start(progress_card, False, False, 0)
 

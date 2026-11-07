@@ -62,7 +62,12 @@ def make_curl_cffi_probe(impersonate="chrome124"):
 
     def _probe(target, timeout=3.5):
         t0 = time.time()
-        headers = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0'}
+        headers = {
+            'User-Agent': (
+                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
+                '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+            )
+        }
         headers.update(target.headers or {})
         try:
             res = curl_requests.get(target.url, headers=headers, impersonate=impersonate, timeout=timeout)
@@ -72,6 +77,8 @@ def make_curl_cffi_probe(impersonate="chrome124"):
             dt = int((time.time() - t0) * 1000)
             return ProbeResult(False, dt, None, str(exc))
 
+    _probe.transport_name = "Chrome (curl_cffi)"
+    _probe.is_curl_cffi = True
     return _probe
 
 
@@ -91,3 +98,40 @@ def http_probe(target, timeout=3.5, transport=None):
         return ProbeResult(exc.code < 500, dt, exc.code, str(exc))
     except Exception as exc:
         return ProbeResult(False, 9999, None, str(exc))
+
+
+http_probe.transport_name = "urllib (fallback)"
+http_probe.is_curl_cffi = False
+
+
+def select_probe(impersonate="chrome124"):
+    """Select probe function: curl_cffi Chrome probe if available, else urllib http_probe."""
+    probe = make_curl_cffi_probe(impersonate=impersonate)
+    if probe is not None:
+        return probe
+    return http_probe
+
+
+def select_http_transport(impersonate="chrome124"):
+    """Select HTTP transport for classifier: curl_cffi transport if available, else None."""
+    try:
+        from dpi_classifier import make_curl_cffi_transport
+        return make_curl_cffi_transport(impersonate=impersonate)
+    except Exception:
+        return None
+
+
+def get_probe_transport_name(probe_fn=None) -> str:
+    """Returns human-readable name of the probe transport."""
+    if probe_fn is None:
+        probe_fn = select_probe()
+    if getattr(probe_fn, "is_curl_cffi", False):
+        return "Chrome (curl_cffi)"
+    if getattr(probe_fn, "transport_name", None):
+        return probe_fn.transport_name
+    if probe_fn == http_probe:
+        return "urllib (fallback)"
+    name = getattr(probe_fn, "__name__", "")
+    if "curl" in name.lower() or "curl" in str(probe_fn).lower() or "cffi" in str(probe_fn).lower():
+        return "Chrome (curl_cffi)"
+    return "urllib (fallback)"

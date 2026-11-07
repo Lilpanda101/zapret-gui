@@ -30,6 +30,8 @@ from orchestra_ui import (
     NetworkManagerMonitor,
     NetworkConnectionInfo,
     http_probe,
+    select_probe,
+    get_probe_transport_name,
 )
 from orchestra.orchestrator import OrchestratorResult, PresetResult
 from orchestra.targets import Target, ProbeResult
@@ -77,7 +79,9 @@ def test_create_orchestra_page_with_fake_app(fake_app, tmp_path):
     assert isinstance(widget, OrchestraWidget)
     assert widget.app is fake_app
     assert callable(widget.apply_preset_fn)
-    assert widget.probe_fn == http_probe
+    assert callable(widget.probe_fn)
+    assert get_probe_transport_name(widget.probe_fn) == get_probe_transport_name()
+    assert widget.lbl_transport.get_text() == f"Транспорт проб: {get_probe_transport_name(widget.probe_fn)}"
 
     # Cleanup timer
     if widget.network_monitor:
@@ -93,7 +97,9 @@ def test_app_create_orchestra_page_embed_and_navigation(fake_app, monkeypatch):
     assert isinstance(scrolled, Gtk.ScrolledWindow)
     assert hasattr(fake_app, "orchestra_widget")
     assert isinstance(fake_app.orchestra_widget, OrchestraWidget)
-    assert fake_app.orchestra_widget.probe_fn == http_probe
+    assert callable(fake_app.orchestra_widget.probe_fn)
+    assert get_probe_transport_name(fake_app.orchestra_widget.probe_fn) == get_probe_transport_name()
+    assert fake_app.orchestra_widget.lbl_transport.get_text() == f"Транспорт проб: {get_probe_transport_name()}"
 
     # Check apply_preset_fn forwards to apply_orchestra_preset using EngineParams
     ok = fake_app.orchestra_widget.apply_preset_fn("test_winner_preset")
