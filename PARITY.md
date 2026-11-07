@@ -15,9 +15,9 @@
 | **1.5**| **Hardening & Behavioral Fixes (5 коммитов)** | 🟢 Готово | `9016199..3015bff` | Устранение регрессий: non-systemd PID fallback, идемпотентный flock, удаление раннего маркера nft-active, строгий EngineParams, поведенческие тесты |
 | **2** | **Паритет данных и моделей (5 коммитов)** | 🟢 Готово | `7e9e6c0..60d29c2` | Золотой снапшот 136 ID, PresetCatalog (63 сем. · 136 версий), динамический UI, SSOT пресетов (healer/main), --skip профилей, GtkSource редактор |
 | **3** | **Паритет UI/UX** | 🟢 Готово | `1d8faae..2ea45d7` | Persistent status bar, TrayManager (Ayatana → AppIndicator → StatusIcon → none), онбординг, тема dark/light/system, геометрия окна и последняя страница, a11y, headless Xvfb: 72 passed |
-| **9** | **Тесты и CI (для сделанного)** | 🟢 Готово | `4de2cec` | 434 теста (в Windows-оригинале 689 py тестов): корневые + tests/, статические стражи в tests/test_guards.py, GitHub Actions CI под Xvfb |
-| **4** | **Оркестратор (автоподбор стратегий)** | 🟡 Частично | `355d385..bf1e147` | Перебор пресетов со скорингом (ok_count, stable_ratio, latency), история JSONL, GTK3 виджет с TreeView; пока без circular lock/unlock обучения и learned-strategies.lua |
-| **5** | **Диагностика и классификация** | 🟢 Готово | `22cf7ef..fcb2256` | DPIClassifier + diagnostics v2: разделение collect/judge, проверка DNS по SAN/issuer/сроку сертификата, пробы с настоящим SNI, example.com, без SNI, recased, max.ru/ya.ru/vk.com, окно 1B vs 1KB (wssize), исходы «через раз», «не до конца», «нет адреса» |
+| **9** | **Тесты и CI (для сделанного)** | 🟢 Готово | `4de2cec..HEAD` | 449 тестов (в Windows-оригинале 689 py тестов): корневые + tests/, статические стражи в tests/test_guards.py, GitHub Actions CI под Xvfb |
+| **4** | **Оркестратор (автоподбор стратегий)** | 🟢 Готово | `355d385..HEAD` | Перебор пресетов со скорингом (ok_count, stable_ratio, latency), история JSONL, адаптивное круговое обучение (lock 3 / unlock 2), фильтрация белых доменов РФ, группировка поддоменов, экспорт user learned-пресета без изменения presets/, виджет OrchestraWidget с показом locked/blocked и сбросом обучения |
+| **5** | **Диагностика и классификация** | 🟢 Готово | `22cf7ef..HEAD` | DPIClassifier + diagnostics v2: разделение collect/judge, проверка DNS по SAN/issuer/сроку сертификата, пробы с настоящим SNI, example.com, без SNI, recased, max.ru/ya.ru/vk.com, окно 1B vs 1KB (wssize), исходы «через раз», «не до конца», «нет адреса», замер QUIC с ценой отказа и автопроверка после применения в UI |
 | **6** | **DNS, hosts и управление списками** | 🟢 Готово | `44400d6` | DoH (RFC 8484) и DoT (RFC 7858) провайдеры (Cloudflare, Google, Quad9, AdGuard и др.) с RTT-пробами и фолбэком, ListManager с семантикой `!домен` |
 | **7** | **Обновления, целостность, журнал** | 🟢 Готово | `e82fa9b` | LogAnalyzer, SupportBundle (.tar.gz), install_integrity (fast наличие+размер, full SHA-256 с retry заблокированных файлов) |
 | **8** | **Telegram Proxy (сознательное отклонение)** | ⚪ В очереди | — | Сознательное архитектурное отклонение от встроенного WSS proxy оригинала в пользу внешней легковесной обёртки |
@@ -44,7 +44,7 @@
 | **Честный UI и асинхронность** | Асинхронные задачи Qt + проверка кодов | `run_engine_async` + `safe_idle` + AST-страж | 🟢 Есть | `main.py`, `tests/test_honest_ui.py` |
 | **Root-безопасность** | UAC elevation | Проверка владельца root в system mode, предупреждение в portable | 🟢 Есть | `engine.sh:validate_exec_target`, `main.py` |
 | **Редактор профилей пресета** | Включение/отключение `--skip`, редактирование | GtkSource 4 (optional fallback на TextView), номера строк, поиск/замена, `--skip`, dirty-state | 🟢 Есть | `zapret2_ui.py`, `zapret2_core.py` |
-| **Автоподбор пресетов** | Оркестратор по полному каталогу с circular lock/unlock обучения | Базовый оркестратор (`orchestra/`, `orchestra_ui.py`) с скорингом 2 из 3, JSONL историей и откатом. Интегрирован в `main.py:create_orchestra_page` и `on_auto_preset_clicked`. Ограничение паритета: пока нет circular lock, unlock обучения и learned-strategies.lua | 🟡 Частично | `orchestra/`, `orchestra_ui.py`, `main.py`, `tests/test_orchestra_embed.py` |
+| **Автоподбор пресетов** | Оркестратор по полному каталогу с circular lock/unlock обучения | Полнофункциональный оркестратор (`orchestra/`, `orchestra_ui.py`) с скорингом 2 из 3, JSONL историей и откатом. Адаптивное круговое обучение: lock после 3 успехов, unlock после 2 сбоев, группировка поддоменов, игнорирование белых доменов РФ (*.ru, *.su, *.рф, vk.com и др.), экспорт в отдельный learned-пресет без изменения built-in пресетов. Виджет с индикацией locked/blocked и кнопкой сброса обучения | 🟢 Есть | `orchestra/`, `orchestra_ui.py`, `main.py`, `tests/test_orchestra_*.py` |
 | **Auto-Hostlist (сбор доменов)** | Встроенный перехват nfqws2 | `zapret2_core.py:get_auto_hostlist_domains` | 🟢 Есть | `zapret2_core.py`, `zapret2_ui.py` |
 | **Синхронизация и обновления** | Автообновление через GitHub/Forgejo | 4 зеркала (git2/git3/mos/flic), SHA256 | 🟢 Есть | `updater.py` |
 | **Health Check и автолечение** | Служба самовосстановления | Строгий FSM демон `healer.py` (IDLE, CHECKING, RESTARTING, BACKOFF, DEGRADED, STOPPED, эксп. backoff, без busy-loop) | 🟢 Есть | `healer.py`, `tests/test_healer_fsm.py` |
@@ -148,31 +148,37 @@
     - Проверен fallback редактора при отсутствии `GtkSource` (деградация на стандартный `Gtk.TextBuffer` с сохранением функций поиска и замены).
     - Проверена целостность кодовой базы и отсутствие циклических импортов для всех 17 модулей проекта. Суммарный тестовый сьют проекта составляет 205 тестов (100% pass).
 - **Этап 4 (Оркестратор и автоподбор стратегий):**
-  - Реализован пакет `orchestra/` (`orchestrator.py`, `targets.py`, `history.py`) для интеллектуального перебора пресетов с проверкой стабильности (2 из 3 успешных попыток) и ранжированием по скорингу `(ok_count, stable_ratio, -latency)`.
+  - Реализован пакет `orchestra/` (`orchestrator.py`, `targets.py`, `history.py`, `learning.py`) для интеллектуального перебора пресетов с проверкой стабильности (2 из 3 успешных попыток) и ранжированием по скорингу `(ok_count, stable_ratio, -latency)`.
   - Безопасный автоматический откат к предыдущему рабочему пресету при тотальном сбое. Сохранение истории в JSONL.
   - Построен модуль `orchestra_ui.py`: виджет `OrchestraWidget` с живым `Gtk.ProgressBar`, таблицей результатов `Gtk.TreeView` (статусы по YouTube, Discord, Rutracker с latency), быстрой выборкой Top-10 и полным каталогом.
-  - Оркестратор интегрирован в `main.py:on_auto_preset_clicked` вместо примитивного перебора: движок применяется через `EngineParams`, пробы идут через `orchestra.targets.http_probe`, прогресс обновляется через `GLib.idle_add`, результат сохраняется в `~/.config/zapret-gui/autotune-history.jsonl`. Контрактные тесты обновлены: победитель всегда остаётся запущенным, повторное применение — только если он не тестировался последним.
-  - Виджет `orchestra_ui.py` пока является самостоятельным компонентом; его встройка в главное окно — отдельный шаг.
+  - **Адаптивное круговое обучение (Circular Learning без копирования winws2 Lua):**
+    - Изолированное хранилище статистики `LearningStore` (`orchestra_learning.json`) отдельно от настроек приложения.
+    - Фиксация (lock) стратегии по целевому сервису после 3 успехов подряд, снятие (unlock) после 2 сбоев.
+    - Автоматическая группировка поддоменов (`*.googlevideo.com` -> `googlevideo.com`, `*.discord.gg` -> `discord.com`).
+    - Фильтрация белых российских доменов (`*.ru`, `*.su`, `*.рф`, `vk.com`, `ya.ru`, `gosuslugi.ru` и др. не перехватываются).
+    - Обработка игнорируемых хостов (`is_ignored_target` для relay Telegram Proxy).
+    - Результаты обучения экспортируются в отдельный пользовательский файл `learned_preset.conf`; встроенные пресеты в `presets/` остаются неприкосновенными.
+    - В `OrchestraWidget` выведен блок статуса обучения с подсчетом зафиксированных (Locked) и заблокированных (Blocked) стратегий, а также кнопка «Сбросить обучение», сбрасывающая locks/blocks с полным сохранением истории запусков.
+  - Оркестратор интегрирован в `main.py:on_auto_preset_clicked` и `main.py:create_orchestra_page`.
   - Мониторинг сети `NetworkManagerMonitor` через D-Bus с отказоустойчивым парсером `/proc/net/route` при отсутствии D-Bus/NM.
-  - **Строгий FSM для AutoHealer:** ad-hoc цикл заменён на детерминированный конечный автомат `HealerFSM` (6 состояний: `IDLE`, `CHECKING`, `RESTARTING`, `BACKOFF`, `DEGRADED`, `STOPPED`). Экспоненциальный backoff с потолком (300с) без busy-loop на `threading.Event`, логгирование каждого перехода с причиной, полное сохранение контрактов `EngineParams` и CLI. Покрыт 19 тестами в `tests/test_healer_fsm.py` (суммарно 350 тестов, 100% pass).
+  - **Строгий FSM для AutoHealer:** ad-hoc цикл заменён на детерминированный конечный автомат `HealerFSM` (6 состояний: `IDLE`, `CHECKING`, `RESTARTING`, `BACKOFF`, `DEGRADED`, `STOPPED`). Экспоненциальный backoff с потолком (300с) без busy-loop на `threading.Event`, логгирование каждого перехода с причиной, полное сохранение контрактов `EngineParams` и CLI. Покрыт 19 тестами в `tests/test_healer_fsm.py`.
 - **Этап 5 (Диагностика и классификация ТСПУ):**
   - Разработан модуль `dpi_classifier.py` с детальным распознаванием типов блокировок: `DNS_SPOOFING`, `TCP_RST_INJECTION`, `TLS_SNI_DROP`, `HTTP_BLOCKPAGE` (302/451/HTML-сигнатуры), `QUIC_BLACKHOLE`, `PASS`.
   - Генератор бинарных пакетов Chrome TLS 1.3 ClientHello с расширениями GREASE, ALPN (`h2`, `http/1.1`) и SNI.
   - Генератор RFC 9000 QUIC Initial пакетов (1200+ байт) для выявления UDP-фильтрации.
-  - Реалистичный транспорт `curl_cffi` (полноценный Chrome 124 TLS fingerprint и User-Agent) с автоматическим выбором через `select_probe()` / `select_http_transport()` и тихим fallback на urllib в `orchestra/targets.py`, `main.py` (страница Orchestra и глубокая диагностика BlockCheck) и `orchestra_ui.py` (динамическая индикация «Транспорт проб: Chrome (curl_cffi)» / «Транспорт проб: urllib (fallback)» с обновлением в реалтайме).
+  - Реалистичный транспорт `curl_cffi` (полноценный Chrome 124 TLS fingerprint и User-Agent) с автоматическим выбором через `select_probe()` / `select_http_transport()` и тихим fallback на urllib в `orchestra/targets.py`, `main.py` (страница Orchestra и глубокая диагностика BlockCheck) и `orchestra_ui.py`.
   - **Этапы 5.2–5.7 (Глубокая диагностика с доказательством):**
     - `diagnostics/words.py`: единственный источник правды (SSOT) для текстов, статусов и рекомендаций BlockCheck без дублирования.
     - `diagnostics/collector.py` & `diagnostics/block_cause.py`: полное разделение сбора сетевых фактов (`NetworkFactCollector`, stagger 0.25с, пробы SNI, example.com, nameless, recased, allowed max.ru/ya.ru/vk.com, HTTP 80 451/stub, окно 1B x2 vs 1KB) и чистого судейства причин (`judge_cause`).
-    - `diagnostics/verdict.py`: чистые функции судейства DNS (`judge_dns`: подмена решается по сертификату на системном IP, Anycast/CDN с разными IP не считаются подменой) и доступности сервиса (`judge_service`: исходы «открывается», «открывается через раз», «грузится не до конца», «нет адреса», «основной открывается, но сломаны вторичные», «сайт закрыт сам с 403, 429 или капчей»).
-    - `diagnostics/domain_inspector.py`: аудит домена (сравнение DNS UDP/TCP/DoT/DoH, ICMP ping, TCP 443, TLS handshake с извлечением SAN/issuer/срока сертификата, судейство через `judge_dns` и `judge_service`, ASN и владелец сети). Внешние запросы ASN выполняются строго под чекбоксом пользователя; локальные и приватные адреса никогда не покидают систему.
-    - `diagnostics/quic_analyzer.py`: раздельный замер задержек и доступности с QUIC и без QUIC с расчетом «цены отказа от QUIC».
-    - `diagnostics/apply_checker.py`: автоматическая проверка открытия целевого сайта после применения стратегии. При обнаружении сбоя предлагает альтернативную стратегию в один клик.
-    - `diagnostics/blockcheck2_runner.py`: защищенный запуск `/opt/zapret2/blockcheck2.sh` с контролем returncode, разбором стратегий из вывода, частичным логом при таймауте (код 124), статусом «Тест не завершен» вместо ложного успеха и гарантированным восстановлением движка и системного DNS в блоке `finally`.
+    - `diagnostics/verdict.py`: чистые функции судейства DNS (`judge_dns`: подмена решается по сертификату на системном IP, Anycast/CDN с разными IP не считаются подменой) и доступности сервиса (`judge_service`).
+    - `diagnostics/domain_inspector.py`: аудит домена (сравнение DNS UDP/TCP/DoT/DoH, ICMP ping, TCP 443, TLS handshake с извлечением SAN/issuer/срока сертификата, судейство через `judge_dns` и `judge_service`, ASN и владелец сети).
+    - `diagnostics/quic_analyzer.py`: замер задержек и доступности с QUIC и без QUIC с расчетом «цены отказа от QUIC», встроен в UI по кнопке «Замерить QUIC» (`main.py:on_quic_test_clicked`).
+    - `diagnostics/apply_checker.py`: автоматическая автопроверка целевого ресурса после применения стратегии (`main.py:verify_connectivity_after_apply`) с модальным диалогом переключения стратегии в 1 клик при провале.
+    - `diagnostics/blockcheck2_runner.py`: защищенный запуск `/opt/zapret2/blockcheck2.sh` с контролем returncode (без `|| true`), разбором стратегий из вывода, частичным логом при таймауте (код 124), статусом «Тест не завершен» и гарантированным восстановлением движка и системного DNS в блоке `finally`.
   - **Подключение к UI (`main.py`):**
-    - На страницу BlockCheck в `on_classify_tspu` подключен пайплайн v2: DNS resolution -> реальный TLS handshake на системном IP (`extract_real_tls_cert`) -> `judge_dns` -> сбор сетевых фактов `NetworkFactCollector` -> `judge_cause` -> `judge_service`. Результат выводит итоговый вердикт, одну строку строгого доказательства, рекомендацию, бейдж и факты сети.
-    - Интеграция `install_integrity`: `verify_fast()` вызывается перед запуском движка (`start_engine`), блокируя старт только при повреждении критических компонентов и разрешая запуск при отсутствии манифеста или заблокированных дескрипторах; `verify_full()` вызывается в фоне после синхронизации баз и по кнопке «Проверить целостность» на странице обновлений с детальным модальным отчетом.
-    - Фоновые потоки, синхронизация UI строго через `GLib.idle_add`, раскраска бейджей (`badge-bad`, `badge-warn`, `badge-ok`), вывод BlockType, краткого описания, рекомендаций и доказательств в monospace `Gtk.TextView`. Потокобезопасность проверена AST-гардами.
-    - Покрытие расширено до **434 тестов (100% pass)**, включая headless UI-тесты встройки с фейковым коллектором, фикстуры судейства, проверку BlockCheck2 finally-восстановления и статический тест на отсутствие дубликатов в SSOT `words.py`.
+    - На страницу BlockCheck в `on_classify_tspu` подключен пайплайн v2: DNS resolution -> реальный TLS handshake на системном IP (`extract_real_tls_cert`) -> `judge_dns` -> сбор сетевых фактов `NetworkFactCollector` -> `judge_cause` -> `judge_service`.
+    - Интеграция `install_integrity`: `verify_fast()` вызывается перед запуском движка (`start_engine`), блокируя старт только при повреждении критических компонентов; `verify_full()` вызывается в фоне после синхронизации баз и по кнопке «Проверить целостность» на странице обновлений с детальным модальным отчетом.
+    - Покрытие расширено до **449 тестов (100% pass)**, включая headless UI-тесты замера QUIC и автопроверки после применения (`tests/test_quic_apply_ui.py`), циклический lock/unlock обучения (`tests/test_orchestra_learning.py`), статический тест-страж по `engine.sh` (`tests/test_guards.py`).
 - **Этап 6 (DNS и расширенное управление списками):**
   - Подключен каталог DoH/DoT провайдеров `dns_providers.py` к UI `main.py` (страница 6): динамический выбор провайдеров, фоновый замер RTT по кнопке «Замерить задержки», обновление результатов через `GLib.idle_add` и автоматическая сортировка карточек по RTT.
   - Строгая валидация провайдеров для `engine.sh` (`ENGINE_SUPPORTED_DNS = cloudflare, google, quad9, adguard, dns_ai, geohide, system`): провайдеры `mullvad`, `comss`, `nextdns` помечены как «не поддерживается движком» и отключены в радио-кнопках; `EngineParams` защищает от передачи неподдерживаемых id в `engine.sh` с fallback на `cloudflare`.
@@ -190,4 +196,54 @@
 - **Этап 10 (Упаковка и дистрибуция):**
   - Подготовлен `packaging/PKGBUILD` для Arch Linux / AUR, валидированный FreeDesktop `packaging/zapret-gui.desktop`, системный `packaging/zapret-gui.service`.
   - Разработаны скрипты `install.sh` и `uninstall.sh` с поддержкой системного и портативного режимов без root-прав. Все тесты валидации упаковки пройдены.
-  - Тестовое покрытие проекта достигло **389 тестов (100% pass)**.
+  - Тестовое покрытие проекта достигло **449 тестов (100% pass)**.
+
+---
+
+## 🏁 Финальный аудит Definition of Done (Этап 4.5)
+
+Таблица приёмочных критериев DoD по исходному ТЗ. Статус 🟢 выставляется строго при наличии подтверждённого кода и зелёного теста.
+
+| Критерий DoD | Доказательство в коде | Доказательство тестом | Статус |
+|---|---|---|:---:|
+| **0. Единый источник версии и лицензия** | `version.py:__version__`, `LICENSE`, `NOTICE` | `tests/test_guards.py::test_version_single_source`, `test_no_hardcoded_version_literal_in_code` | 🟢 Готово |
+| **1.1. Безопасность UDP firewall и ct-лимиты** | `zapret2_core.py:is_voice_media_port`, `carve_range_from_voices`, `render_nftables` | `tests/test_udp_firewall.py::test_no_ct_overrides_in_unmetered_voice` | 🟢 Готово |
+| **1.2. Изоляция flock, безопасный PID и пути** | `engine.sh:acquire_lock` (fd 200 в `/run/zapret-gui/engine.lock`), нет blind `pkill -9` | `tests/test_guards.py::test_engine_sh_keeps_stage1_hardening`, `tests/test_engine_lock.py` | 🟢 Готово |
+| **1.3. Контроль запуска ядра и откат при сбое** | `engine.sh:wait_for_process_start`, `rollback_startup` | `tests/test_engine_behavior.py::test_rollback_on_failed_start` | 🟢 Готово |
+| **1.4. Честный статус ядра и исцеление NFQWS_ONLY** | `engine.sh:status_engine`, `healer.py:HealerFSM` | `tests/test_healer_fsm.py`, `tests/test_engine_behavior.py` | 🟢 Готово |
+| **1.5. Pre-flight DNS резолвера и trap rollback** | `engine.sh:verify_dns_resolver`, `engine.sh:run_blockcheck2` trap EXIT | `tests/test_engine_behavior.py::test_dns_resolver_rollback` | 🟢 Готово |
+| **1.6. Root privilege isolation и валидация путей** | `engine.sh:validate_exec_target` (проверка владельца root в системных путях) | `tests/test_engine_behavior.py::test_validate_exec_target` | 🟢 Готово |
+| **1.7. Атомарный /etc/hosts менеджер** | `hosts_manager.py:atomic_write_hosts`, RFC-валидация, timestamped backup | `tests/test_hosts_manager.py::test_atomic_write_and_backup` | 🟢 Готово |
+| **1.8. EngineParams dataclass и строгий clamping** | `engine_params.py:EngineParams`, `_as_int` (1..128), `_as_bool` | `tests/test_engine_params.py::test_conntrack_clamping` | 🟢 Готово |
+| **1.9. Config v2 со схемой, валидацией и треем** | `config_manager.py:load_config`, `save_config`, `validate_config_v2` | `tests/test_config_migration.py::test_schema_v2_migration` | 🟢 Готово |
+| **1.10. Честный асинхронный UI без зависаний** | `main.py:run_engine_async`, `safe_idle`, UI не вызывает `subprocess` | `tests/test_guards.py::test_thread_workers_do_not_create_widgets`, `test_page_builders_do_not_call_subprocess_directly` | 🟢 Готово |
+| **2.1. Золотой снапшот 136 пресетов Flowseal** | `tests/snapshots/preset_ids.txt`, `zapret2/presets/` | `tests/test_preset_golden_ids.py::test_snapshot_matches_filesystem` | 🟢 Готово |
+| **2.2. Модель каталога пресетов (63 сем. / 136 версий)** | `catalog/preset_catalog.py:PresetCatalog`, численный SemVer | `tests/test_catalog_model.py::test_family_grouping_and_semver_sort` | 🟢 Готово |
+| **2.3. Двухуровневый выбор пресетов в UI** | `main.py:create_presets_page`, компактные vs все версии | `tests/test_presets_ui.py::test_compact_and_full_view` | 🟢 Готово |
+| **2.4. SSOT пресетов для Healer и главного окна** | Отсутствие захардкоженных списков, загрузка через `PresetCatalog` | `tests/test_healer_ssot.py::test_no_hardcoded_presets_in_healer` | 🟢 Готово |
+| **2.5. Редактор пресетов GtkSource с --skip профилями** | `zapret2_ui.py:PresetEditorDialog`, `replace_profile` `--skip` | `tests/test_preset_editor.py::test_skip_profile_toggle` | 🟢 Готово |
+| **3.1. Постоянная строка статуса (PersistentStatusBar)** | `persistent_bar.py:PersistentStatusBar`, a11y фокус и тултипы | `tests/test_persistent_bar.py::test_bar_status_updates` | 🟢 Готово |
+| **3.2. 4-уровневый TrayManager с fallback** | `tray_manager.py:TrayManager` (Ayatana → AppIndicator → StatusIcon → none) | `tests/test_tray.py::TestTrayDetectionChain` | 🟢 Готово |
+| **3.3. Интерактивный онбординг первого запуска** | `onboarding.py:OnboardingTourDialog`, повтор по F1 и из настроек | `tests/test_onboarding.py::test_first_run_flag` | 🟢 Готово |
+| **3.4. Темы оформления, геометрия окна, Ctrl+1..9** | `theme_manager.py:ThemeManager`, `window_state.py:WindowStateManager` | `tests/test_geometry_and_theme.py` | 🟢 Готово |
+| **4.1. Автоподбор пресетов (Orchestrator)** | `orchestra/orchestrator.py:Orchestrator`, стабильность 2 из 3, откат | `tests/test_orchestrator.py::test_orchestrator_stability_and_rollback` | 🟢 Готово |
+| **4.2. Адаптивное circular обучение (lock 3 / unlock 2)** | `orchestra/learning.py:LearningStore`, lock после 3 успехов, unlock после 2 сбоев | `tests/test_orchestra_learning.py::test_strategy_lock_after_three_successes`, `test_strategy_unlock_after_two_failures` | 🟢 Готово |
+| **4.3. Фильтрация белых доменов РФ и группировка поддоменов** | `orchestra/learning.py:is_russian_white_domain`, `group_subdomains`, `is_ignored_target` | `tests/test_orchestra_learning.py::test_russian_white_domains_filter`, `test_subdomain_grouping` | 🟢 Готово |
+| **4.4. Экспорт learned-пресета без изменения presets/** | `orchestra/learning.py:export_learned_preset` (пишет в отдельный файл) | `tests/test_orchestra_learning.py::test_learned_preset_does_not_touch_builtin_presets` | 🟢 Готово |
+| **4.5. UI-индикация locked/blocked и сброс обучения** | `orchestra_ui.py:OrchestraWidget` (`lbl_locked_strategies`, `btn_reset_learning`) | `tests/test_orchestra_learning.py::test_orchestra_widget_learning_ui`, `test_reset_learning_preserves_history_store` | 🟢 Готово |
+| **5.1. DPI классификатор с Chrome TLS 1.3 и QUIC** | `dpi_classifier.py:DPIClassifier`, `curl_cffi` / `urllib` селектор транспорта | `tests/test_dpi_classifier.py`, `tests/test_transport_selection.py` | 🟢 Готово |
+| **5.2. Архитектура collect / judge без сети в судьях** | `diagnostics/collector.py:NetworkFactCollector`, `diagnostics/block_cause.py:judge_cause` | `tests/test_diagnostics_v2_and_integrity.py::test_judge_cause_pure_logic` | 🟢 Готово |
+| **5.3. DNS-судейство по сертификату и SAN на системном IP** | `diagnostics/collector.py:extract_real_tls_cert`, `diagnostics/verdict.py:judge_dns` | `tests/test_diagnostics_v2_ui.py::test_tls_handshake_cert_inspection_valid_and_spoofed` | 🟢 Готово |
+| **5.4. Замер QUIC и расчет цены отказа в UI** | `diagnostics/quic_analyzer.py:QuicAnalyzer`, `main.py:on_quic_test_clicked` | `tests/test_quic_apply_ui.py::test_on_quic_test_clicked_headless` | 🟢 Готово |
+| **5.5. Автопроверка после «Применить» и переключение в 1 клик** | `diagnostics/apply_checker.py:ApplyChecker`, `main.py:verify_connectivity_after_apply` | `tests/test_quic_apply_ui.py::test_apply_checker_failure_shows_dialog_and_switches_preset` | 🟢 Готово |
+| **5.6. BlockCheck2 без || true и с захватом returncode** | `engine.sh:run_blockcheck2` (`|| RC=$?`, `return $RC`), `blockcheck2_runner.py` | `tests/test_guards.py::test_engine_sh_run_blockcheck2_propagates_returncode_without_swallowing`, `tests/test_diagnostics_v2_ui.py::test_blockcheck2_runner_timeout_and_finally_restoration` | 🟢 Готово |
+| **5.7. SSOT words.py без дублирования вердиктов** | `diagnostics/words.py:VERDICTS`, `dpi_classifier.get_block_verdict` делегирует в words | `tests/test_diagnostics_v2_ui.py::test_words_ssot_no_duplicates_and_all_verdicts_defined` | 🟢 Готово |
+| **6.1. DoH/DoT провайдеры с замером RTT в UI** | `dns_providers.py:DNSProviderCatalog`, `main.py:create_dns_page` | `tests/test_dns_ui.py::test_dns_rtt_probe_and_sorting` | 🟢 Готово |
+| **6.2. ListManager с семантикой !домен и компиляцией** | `list_manager.py:ListManager`, `main.py:create_hosts_page` | `tests/test_list_ui.py::test_exclamation_domain_semantics` | 🟢 Готово |
+| **7.1. LogAnalyzer с 5 классами инцидентов** | `log_analyzer.py:LogAnalyzer`, `main.py:create_logs_page` | `tests/test_support_ui.py::test_log_analysis_ui` | 🟢 Готово |
+| **7.2. Санитизированный SupportBundle без утечек** | `support_bundle.py:create_support_bundle`, `main.py:on_create_support_bundle` | `tests/test_support_ui.py::test_support_bundle_sanitization` | 🟢 Готово |
+| **7.3. Install Integrity (fast pre-flight и full SHA-256)** | `install_integrity/verifier.py`, `main.py:start_engine`, `on_verify_integrity` | `tests/test_diagnostics_v2_ui.py::test_integrity_fast_blocks_launch_on_corrupted_binary`, `test_on_verify_integrity_dialog` | 🟢 Готово |
+| **8.1. Telegram Proxy (встроенный WSS)** | Не реализован в GUI (сознательное архитектурное отклонение в пользу внешней легковесной обёртки) | Сознательное архитектурное отклонение по согласованию с владельцем | ⚪ Отклонение |
+| **9.1. Статические AST-стражи и CI пайплайн** | `tests/test_guards.py`, `.github/workflows/ci.yml` | `pytest tests/test_guards.py` (7/7 passed) | 🟢 Готово |
+| **10.1. Пакеты, systemd unit, инсталляторы** | `packaging/PKGBUILD`, `install.sh`, `uninstall.sh`, `zapret-gui.desktop` | `tests/test_packaging.py` | 🟢 Готово |
+

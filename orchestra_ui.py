@@ -53,6 +53,7 @@ from orchestra.targets import (
     get_probe_transport_name,
 )
 from orchestra.history import HistoryStore, RunRecord
+from orchestra.learning import LearningStore
 from orchestra.orchestrator import Orchestrator, OrchestratorResult, PresetResult, TargetResult
 from catalog.preset_catalog import PresetCatalog, PresetEntry
 
@@ -526,6 +527,7 @@ class OrchestraWidget(Gtk.Box):
         probe: Optional[Callable[[Target], Any]] = None,
         targets: Optional[List[Target]] = None,
         history: Optional[HistoryStore] = None,
+        learning_store: Optional[LearningStore] = None,
         network_monitor: Optional[NetworkManagerMonitor] = None,
         settle_s: float = 0.5,
     ):
@@ -537,6 +539,9 @@ class OrchestraWidget(Gtk.Box):
         self.targets = targets or default_targets()
         self.history_store = history or HistoryStore(
             Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "zapret-gui" / "orchestra_history.jsonl"
+        )
+        self.learning_store = learning_store or LearningStore(
+            Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "zapret-gui" / "orchestra_learning.json"
         )
         self.settle_s = settle_s
 
@@ -554,6 +559,7 @@ class OrchestraWidget(Gtk.Box):
 
         self._build_ui()
         self.update_transport_label()
+        self.update_learning_ui()
 
     def set_probe(self, probe_fn: Optional[Callable[[Target], Any]]) -> None:
         """Динамически обновляет функцию пробы и синхронизирует отображение транспорта в UI."""
@@ -725,6 +731,42 @@ class OrchestraWidget(Gtk.Box):
 
         self.pack_start(progress_card, False, False, 0)
 
+        # 4b. Circular Learning Status Card
+        learning_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        learning_card.get_style_context().add_class("fluent-card")
+
+        learn_header_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        lbl_learn_title = Gtk.Label(
+            label="<b>Адаптивное обучение (Circular Learning)</b>",
+            use_markup=True,
+            xalign=0,
+        )
+        learn_header_box.pack_start(lbl_learn_title, True, True, 0)
+
+        self.btn_reset_learning = Gtk.Button(label="Сбросить обучение")
+        self.btn_reset_learning.get_style_context().add_class("fluent-btn-secondary")
+        self.btn_reset_learning.set_tooltip_text(
+            "Сбросить зафиксированные и заблокированные стратегии (история запусков сохраняется)"
+        )
+        self.btn_reset_learning.connect("clicked", lambda _: self.reset_learning())
+        learn_header_box.pack_end(self.btn_reset_learning, False, False, 0)
+        learning_card.pack_start(learn_header_box, False, False, 0)
+
+        learn_stats_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=18)
+        self.lbl_locked_strategies = Gtk.Label(label="Зафиксировано (Locked): 0", xalign=0)
+        self.lbl_locked_strategies.get_style_context().add_class("page-subtitle")
+        self.lbl_blocked_strategies = Gtk.Label(label="Заблокировано (Blocked): 0", xalign=0)
+        self.lbl_blocked_strategies.get_style_context().add_class("page-subtitle")
+        self.lbl_learned_preset = Gtk.Label(label="Пользовательский пресет: learned_preset.conf", xalign=1)
+        self.lbl_learned_preset.get_style_context().add_class("page-subtitle")
+
+        learn_stats_box.pack_start(self.lbl_locked_strategies, False, False, 0)
+        learn_stats_box.pack_start(self.lbl_blocked_strategies, False, False, 0)
+        learn_stats_box.pack_end(self.lbl_learned_preset, False, False, 0)
+        learning_card.pack_start(learn_stats_box, False, False, 0)
+
+        self.pack_start(learning_card, False, False, 0)
+
         # 5. Tested Presets Table Card
         table_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         table_card.get_style_context().add_class("fluent-card")
@@ -859,6 +901,7 @@ class OrchestraWidget(Gtk.Box):
             targets=self.targets,
             settle_s=self.settle_s,
             history=self.history_store,
+            learning_store=self.learning_store,
             on_progress=self._on_orchestrator_progress,
         )
 
@@ -1011,6 +1054,8 @@ class OrchestraWidget(Gtk.Box):
             self.btn_apply_winner.set_sensitive(False)
             self.lbl_status.set_markup("<span color='#e53935'><b>Все пресеты провалили проверку</b></span>")
 
+        self.update_learning_ui()
+
     def _on_autotune_error(self, err_msg: str) -> None:
         """Handles runtime errors during worker execution."""
         self.is_running = False
@@ -1055,6 +1100,35 @@ class OrchestraWidget(Gtk.Box):
         self.lbl_winner.set_text("Лидер: —")
         self.btn_apply_winner.set_sensitive(False)
         self.btn_apply_winner.set_label("Применить победителя")
+
+    def update_learning_ui(self) -> None:
+        """Обновляет индикаторы зафиксированных и заблокированных стратегий."""
+        if not hasattr(self, "learning_store") or not self.learning_store:
+            return
+        locked_map = self.learning_store.get_locked_strategies()
+        blocked_map = self.learning_store.get_blocked_strategies()
+        total_blocked = sum(len(s) for s in blocked_map.values())
+        if hasattr(self, "lbl_locked_strategies") and self.lbl_locked_strategies is not None:
+            self.lbl_locked_strategies.set_text(f"Зафиксировано (Locked): {len(locked_map)}")
+            if locked_map:
+                items = [f"{g}: {s}" for g, s in sorted(locked_map.items())]
+                self.lbl_locked_strategies.set_tooltip_text("\n".join(items))
+            else:
+                self.lbl_locked_strategies.set_tooltip_text("Нет зафиксированных стратегий (требуется >= 3 успехов)")
+        if hasattr(self, "lbl_blocked_strategies") and self.lbl_blocked_strategies is not None:
+            self.lbl_blocked_strategies.set_text(f"Заблокировано (Blocked): {total_blocked}")
+        if hasattr(self, "lbl_learned_preset") and self.lbl_learned_preset is not None:
+            preset_name = self.learning_store.learned_preset_path.name if hasattr(self.learning_store, "learned_preset_path") else "learned_preset.conf"
+            self.lbl_learned_preset.set_text(f"Пользовательский пресет: {preset_name}")
+
+    def reset_learning(self) -> None:
+        """Сбрасывает зафиксированные и заблокированные стратегии, сохраняя историю прогонов."""
+        if self.is_running:
+            return
+        if self.learning_store:
+            self.learning_store.reset_learning()
+        self.update_learning_ui()
+        self.lbl_status.set_markup("<b>Обучение сброшено (история запусков сохранена)</b>")
 
 
 # ============================================================================

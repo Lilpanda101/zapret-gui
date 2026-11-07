@@ -99,6 +99,15 @@ def test_engine_sh_keeps_stage1_hardening():
     assert '/tmp/zapret-gui.pid' not in src, 'PID file must live in /run/zapret-gui, not /tmp'
 
 
+def test_engine_sh_run_blockcheck2_propagates_returncode_without_swallowing():
+    src = _read(ENGINE_SH)
+    assert 'run_blockcheck2()' in src, 'run_blockcheck2 function must exist in engine.sh'
+    func_body = src.split('run_blockcheck2() {', 1)[1].split('\n}', 1)[0]
+    assert '|| true' not in func_body, 'run_blockcheck2 must not swallow errors with || true'
+    assert '|| RC=$?' in func_body or 'RC=$?' in func_body, 'run_blockcheck2 must capture returncode via RC=$?'
+    assert 'return $RC' in func_body, 'run_blockcheck2 must return $RC to caller'
+
+
 def test_ci_workflow_covers_required_checks():
     assert os.path.exists(CI_YML), 'Missing .github/workflows/ci.yml'
     text = _read(CI_YML)

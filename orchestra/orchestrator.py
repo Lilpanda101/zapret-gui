@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Tuple
 
 from .history import RunRecord
+from .learning import is_russian_white_domain, is_ignored_target
 from .targets import default_targets
 
 
@@ -64,7 +65,7 @@ def _normalize_probe(raw):
 
 
 class Orchestrator:
-    def __init__(self, apply_preset, probe, targets=None, attempts=3, required_successes=2, batch_size=12, time_budget_s=None, settle_s=0.0, history=None, on_progress=None, time_fn=time.time, sleep_fn=time.sleep):
+    def __init__(self, apply_preset, probe, targets=None, attempts=3, required_successes=2, batch_size=12, time_budget_s=None, settle_s=0.0, history=None, learning_store=None, on_progress=None, time_fn=time.time, sleep_fn=time.sleep):
         if attempts < 1:
             raise ValueError('attempts must be >= 1')
         if not 1 <= required_successes <= attempts:
@@ -78,6 +79,7 @@ class Orchestrator:
         self.time_budget_s = time_budget_s
         self.settle_s = settle_s
         self.history = history
+        self.learning_store = learning_store
         self.on_progress = on_progress
         self._time_fn = time_fn
         self._sleep_fn = sleep_fn
@@ -113,9 +115,24 @@ class Orchestrator:
         per_target = []
         ok_count = 0
         latencies = []
+        active_targets = []
         for target in self.targets:
+            target_id = getattr(target, 'domain', '') or getattr(target, 'url', '') or getattr(target, 'key', '')
+            if is_russian_white_domain(target_id) or is_ignored_target(target_id):
+                continue
+            active_targets.append(target)
+
+        target_pool = active_targets if active_targets else self.targets
+
+        for target in target_pool:
+            target_id = getattr(target, 'domain', '') or getattr(target, 'url', '') or getattr(target, 'key', '')
+            if self.learning_store and self.learning_store.is_strategy_blocked(target_id, preset_id):
+                per_target.append(TargetResult(target.key, self.attempts, 0, False, 9999))
+                continue
+
             successes = 0
             target_latencies = []
+            completed_attempts = 0
             for _ in range(self.attempts):
                 if self._stop.is_set():
                     break
@@ -123,17 +140,26 @@ class Orchestrator:
                     ok, latency = _normalize_probe(self.probe(target))
                 except Exception:
                     ok, latency = False, 9999
+                completed_attempts += 1
                 if ok:
                     successes += 1
                     target_latencies.append(latency)
+
+            # If stopped mid-target, do not record false negative in learning stats
+            if self._stop.is_set() and completed_attempts < self.attempts:
+                break
+
             stable = successes >= self.required_successes
             if stable:
                 ok_count += 1
                 latencies.extend(target_latencies)
             avg_target = int(sum(target_latencies) / len(target_latencies)) if target_latencies else 9999
             per_target.append(TargetResult(target.key, self.attempts, successes, stable, avg_target))
+            if self.learning_store and not self._stop.is_set():
+                self.learning_store.record_attempt(target_id, preset_id, success=stable)
+
         avg_latency = int(sum(latencies) / len(latencies)) if latencies else 9999
-        return PresetResult(preset_id, ok_count, len(self.targets), avg_latency, tuple(per_target), '')
+        return PresetResult(preset_id, ok_count, len(target_pool), avg_latency, tuple(per_target), '')
 
     def run(self, candidates, previous_preset=None):
         candidates = list(candidates or [])
@@ -196,6 +222,12 @@ class Orchestrator:
         elif results and results[-1].preset_id != winner:
             try:
                 self.apply_preset(winner)
+            except Exception:
+                pass
+        if self.learning_store is not None:
+            try:
+                self.learning_store.save()
+                self.learning_store.export_learned_preset()
             except Exception:
                 pass
         completed = (not stopped) and reason != 'budget' and len(results) == len(candidates)

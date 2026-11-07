@@ -43,6 +43,7 @@ from catalog.preset_catalog import PresetCatalog
 from orchestra import (
     Orchestrator,
     HistoryStore,
+    LearningStore,
     http_probe,
     default_targets,
     select_probe,
@@ -2697,7 +2698,9 @@ class Zapret2App(Gtk.Window):
                 defaults["catalog"] = PresetCatalog.load_from_directory(catalog_path)
             except Exception:
                 pass
+        learning_path = os.path.join(os.path.dirname(CONFIG_FILE), "orchestra_learning.json")
         defaults["history"] = HistoryStore(Path(history_path))
+        defaults["learning_store"] = LearningStore(Path(learning_path))
         defaults.update(kwargs)
         scrolled, widget = create_orchestra_page(**defaults)
         self.orchestra_widget = widget
@@ -2796,6 +2799,7 @@ class Zapret2App(Gtk.Window):
                 text += f" · лидер {best.preset_id} ({best.ok_count}/{best.total_targets})"
             GLib.idle_add(self.btn_auto_preset.set_label, text)
 
+        learning_path = os.path.join(os.path.dirname(CONFIG_FILE), "orchestra_learning.json")
         orchestrator = Orchestrator(
             apply_preset=apply_preset,
             probe=select_probe(),
@@ -2804,6 +2808,7 @@ class Zapret2App(Gtk.Window):
             required_successes=2,
             settle_s=1.2,
             history=HistoryStore(os.path.join(os.path.dirname(CONFIG_FILE), "autotune-history.jsonl")),
+            learning_store=LearningStore(Path(learning_path)),
             on_progress=notify,
             sleep_fn=time.sleep,
             time_fn=time.time,
@@ -3799,7 +3804,7 @@ class Zapret2App(Gtk.Window):
 
     def _show_apply_suggestion_dialog(self, outcome):
         dlg = Gtk.MessageDialog(
-            transient_for=self,
+            transient_for=self if isinstance(self, Gtk.Window) else None,
             flags=0,
             message_type=Gtk.MessageType.WARNING,
             buttons=Gtk.ButtonsType.NONE,
