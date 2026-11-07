@@ -3,6 +3,8 @@ diagnostics/words.py - Единственный источник правды (S
 статусов доступности, рекомендаций и текстов ошибок диагностики.
 """
 
+from typing import Any, Dict
+
 # Статусы экспресс-проверок и карточек
 STATUS_NOT_CHECKED = "Не проверялось"
 STATUS_CHECKING = "Проверка..."
@@ -12,7 +14,7 @@ STATUS_DIAGNOSTICS_RUNNING = "Запуск глубокой диагностик
 STATUS_BLOCKCHECK2_PREPARING = "Подготовка Blockcheck2. Текущий движок будет остановлен...\n"
 
 # Семейства и типы блокировок
-VERDICTS = {
+VERDICTS: Dict[str, Dict[str, Any]] = {
     "PASS": {
         "title": "Блокировка не обнаружена",
         "description": "Сайт доступен напрямую без видимого вмешательства ТСПУ.",
@@ -23,9 +25,17 @@ VERDICTS = {
     },
     "DNS_SPOOFING": {
         "title": "Подмена DNS (DNS Spoofing / Poisoning)",
-        "description": "Провайдер или ТСПУ перехватывает DNS-запросы и возвращает фиктивный/заглушечный IP.",
+        "description": "Провайдер или ТСПУ перехватывает DNS-запросы и возвращает фиктивный/заглушечный IP с недостоверным сертификатом.",
         "recommendation": "Включите шифрованный DNS (DoT / DoH) в настройках или DNS-AI / Cloudflare.",
         "badge_text": "DNS Подмена (CRITICAL)",
+        "badge_class": "badge-bad",
+        "severity": "CRITICAL",
+    },
+    "DNS_NO_ADDRESS": {
+        "title": "Не удалось узнать адрес сервера",
+        "description": "DNS компьютеру не называет адрес хоста (NXDOMAIN / SERVFAIL). Браузер без DoH не откроет сайт.",
+        "recommendation": "Проверьте DNS-серверы системы или переключитесь на DoT/DoH в настройках.",
+        "badge_text": "Нет адреса (FAIL)",
         "badge_class": "badge-bad",
         "severity": "CRITICAL",
     },
@@ -42,6 +52,14 @@ VERDICTS = {
         "description": "ТСПУ сбрасывает соединение при обнаружении доменного имени в ClientHello.",
         "recommendation": "Примените пресеты со сплитом TLS (split, multidisorder, fakesplit) или фейковым SNI.",
         "badge_text": "TLS SNI Drop (CRITICAL)",
+        "badge_class": "badge-bad",
+        "severity": "CRITICAL",
+    },
+    "TLS_REPLY_WINDOW": {
+        "title": "Фильтрация по первым байтам ответа (Reply Window)",
+        "description": "Фильтр режет TLS с адреса по первым байтам ответа сервера в пределах окна приёма. С окном 1 байт ответ доходит дважды, а с 1 КБ сбрасывается.",
+        "recommendation": "Используйте модификацию размера окна TCP (параметр wssize в nfqws/winws2).",
+        "badge_text": "Окно ответа (CRITICAL)",
         "badge_class": "badge-bad",
         "severity": "CRITICAL",
     },
@@ -71,7 +89,7 @@ VERDICTS = {
     },
     "WHITELIST_RESTRICTION": {
         "title": "Режим «белых списков» (Внутренний контур)",
-        "description": "Отечественные ресурсы (Яндекс, VK) доступны, тогда как все зарубежные узлы блокируются.",
+        "description": "Разрешённые имена (max.ru, ya.ru, vk.com) отвечают, а тестируемый хост и нейтральные блокируются.",
         "recommendation": "Сетевая связность ограничена белыми списками провайдера / региона.",
         "badge_text": "Белый список (CRITICAL)",
         "badge_class": "badge-bad",
@@ -85,6 +103,30 @@ VERDICTS = {
         "badge_class": "badge-warn",
         "severity": "WARNING",
     },
+    "UNSTABLE": {
+        "title": "Сайт открывается через раз",
+        "description": "Соединение то проходит, то обрывается: нестабильный фильтр, потеря пакетов или плавающий DPI.",
+        "recommendation": "Проверьте стабильность пресета или подберите стратегию с повышенной устойчивостью.",
+        "badge_text": "Через раз (WARN)",
+        "badge_class": "badge-warn",
+        "severity": "WARNING",
+    },
+    "CUT_WINDOW": {
+        "title": "Сайт грузится не до конца",
+        "description": "Соединение успешно устанавливается, но обрывается на передаче данных (обрыв 12–36 КБ).",
+        "recommendation": "ТСПУ блокирует передачу больших пакетов; используйте деление потока (split/disorder) или wssize.",
+        "badge_text": "Не до конца (FAIL)",
+        "badge_class": "badge-bad",
+        "severity": "CRITICAL",
+    },
+    "SECONDARY_BROKEN": {
+        "title": "Основной сайт открывается, но сломаны вторичные",
+        "description": "Главная страница доступна, но вспомогательные ресурсы (CDN, медиа, API) блокируются.",
+        "recommendation": "Добавьте сопутствующие домены в список обхода или используйте пресет с глобальным перехватом.",
+        "badge_text": "Вторичные сбои (WARN)",
+        "badge_class": "badge-warn",
+        "severity": "WARNING",
+    },
     "UNKNOWN": {
         "title": "Неопределенный статус блокировки",
         "description": "Характер проблемы не удалось однозначно идентифицировать сигнатурным анализом.",
@@ -95,6 +137,6 @@ VERDICTS = {
     },
 }
 
-def get_verdict_words(key: str) -> dict:
+def get_verdict_words(key: str) -> Dict[str, Any]:
     """Возвращает метаданные вердикта по ключу или дефолтный UNKNOWN."""
     return VERDICTS.get(key, VERDICTS["UNKNOWN"])
