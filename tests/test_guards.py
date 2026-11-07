@@ -15,6 +15,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MAIN_PY = os.path.join(ROOT, 'main.py')
 ENGINE_SH = os.path.join(ROOT, 'engine.sh')
 CI_YML = os.path.join(ROOT, '.github', 'workflows', 'ci.yml')
+PARITY_MD = os.path.join(ROOT, 'PARITY.md')
 
 
 def _read(path):
@@ -113,3 +114,42 @@ def test_ci_workflow_covers_required_checks():
     text = _read(CI_YML)
     for needle in ('pytest', 'ruff', 'shellcheck', 'py_compile', 'bash -n'):
         assert needle in text, f'CI workflow does not cover: {needle}'
+
+
+def test_parity_md_definition_of_done_references_exist():
+    import re
+    assert os.path.exists(PARITY_MD), 'Missing PARITY.md'
+    text = _read(PARITY_MD)
+    assert '## 🏁 Финальный аудит' in text, 'Missing DoD audit section in PARITY.md'
+    dod_section = text.split('## 🏁 Финальный аудит', 1)[1]
+    rows = [line for line in dod_section.splitlines() if line.startswith('| **')]
+    assert len(rows) >= 30, f'Expected >= 30 DoD rows, got {len(rows)}'
+
+    errors = []
+    for r in rows:
+        cols = [c.strip() for c in r.split('|')[1:-1]]
+        if len(cols) != 4:
+            continue
+        crit, code_proof, test_proof, status = cols
+
+        for token in re.findall(r'`([^`]+)`', code_proof):
+            path = token.split(':')[0].strip()
+            if (path.endswith(('.py', '.sh', '.txt', '.policy', '.desktop', '.service', '.yml', '.conf')) or '/' in path) and not path.startswith(('/run', 'http')):
+                full = os.path.join(ROOT, path)
+                if not os.path.exists(full):
+                    errors.append(f'MISSING CODE PATH in {crit}: {path}')
+
+        for token in re.findall(r'`([^`]+)`', test_proof):
+            parts = token.split('::')
+            path = parts[0].strip()
+            test_fn = parts[1].strip() if len(parts) > 1 else None
+            if path.endswith('.py'):
+                full = os.path.join(ROOT, path)
+                if not os.path.exists(full):
+                    errors.append(f'MISSING TEST PATH in {crit}: {path}')
+                elif test_fn:
+                    content = _read(full)
+                    if test_fn not in content:
+                        errors.append(f'MISSING TEST FN in {crit}: {path} :: {test_fn}')
+
+    assert not errors, 'Dead references in PARITY.md DoD table:\n' + '\n'.join(errors)

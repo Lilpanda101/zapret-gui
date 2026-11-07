@@ -703,6 +703,9 @@ class Zapret2App(Gtk.Window):
         self.healer_enabled = True
         self.minimize_to_tray = True
 
+        learning_path = os.path.join(os.path.dirname(CONFIG_FILE), "orchestra_learning.json")
+        self.learning_store = LearningStore(Path(learning_path))
+
         # Intercept window close to minimize to tray
         self.connect("delete-event", self.on_delete_event)
         self.connect("key-press-event", self.on_key_press_event)
@@ -2698,9 +2701,8 @@ class Zapret2App(Gtk.Window):
                 defaults["catalog"] = PresetCatalog.load_from_directory(catalog_path)
             except Exception:
                 pass
-        learning_path = os.path.join(os.path.dirname(CONFIG_FILE), "orchestra_learning.json")
         defaults["history"] = HistoryStore(Path(history_path))
-        defaults["learning_store"] = LearningStore(Path(learning_path))
+        defaults["learning_store"] = getattr(self, "learning_store", None) or LearningStore(Path(os.path.join(os.path.dirname(CONFIG_FILE), "orchestra_learning.json")))
         defaults.update(kwargs)
         scrolled, widget = create_orchestra_page(**defaults)
         self.orchestra_widget = widget
@@ -2799,7 +2801,6 @@ class Zapret2App(Gtk.Window):
                 text += f" · лидер {best.preset_id} ({best.ok_count}/{best.total_targets})"
             GLib.idle_add(self.btn_auto_preset.set_label, text)
 
-        learning_path = os.path.join(os.path.dirname(CONFIG_FILE), "orchestra_learning.json")
         orchestrator = Orchestrator(
             apply_preset=apply_preset,
             probe=select_probe(),
@@ -2808,7 +2809,7 @@ class Zapret2App(Gtk.Window):
             required_successes=2,
             settle_s=1.2,
             history=HistoryStore(os.path.join(os.path.dirname(CONFIG_FILE), "autotune-history.jsonl")),
-            learning_store=LearningStore(Path(learning_path)),
+            learning_store=getattr(self, "learning_store", None),
             on_progress=notify,
             sleep_fn=time.sleep,
             time_fn=time.time,
@@ -2855,6 +2856,9 @@ class Zapret2App(Gtk.Window):
 
                 if best_id:
                     winner_applied(best_id)
+
+                if hasattr(self, "orchestra_widget") and self.orchestra_widget is not None:
+                    self.orchestra_widget.update_learning_ui()
 
                 self.show_dialog("Автоподбор завершен", "\n".join(report_lines))
 

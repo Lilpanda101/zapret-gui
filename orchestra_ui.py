@@ -757,12 +757,13 @@ class OrchestraWidget(Gtk.Box):
         self.lbl_locked_strategies.get_style_context().add_class("page-subtitle")
         self.lbl_blocked_strategies = Gtk.Label(label="Заблокировано (Blocked): 0", xalign=0)
         self.lbl_blocked_strategies.get_style_context().add_class("page-subtitle")
-        self.lbl_learned_preset = Gtk.Label(label="Пользовательский пресет: learned_preset.conf", xalign=1)
-        self.lbl_learned_preset.get_style_context().add_class("page-subtitle")
+        self.lbl_learned_rules = Gtk.Label(label="Карта обучения: learned_rules.conf", xalign=1)
+        self.lbl_learned_rules.get_style_context().add_class("page-subtitle")
+        self.lbl_learned_preset = self.lbl_learned_rules
 
         learn_stats_box.pack_start(self.lbl_locked_strategies, False, False, 0)
         learn_stats_box.pack_start(self.lbl_blocked_strategies, False, False, 0)
-        learn_stats_box.pack_end(self.lbl_learned_preset, False, False, 0)
+        learn_stats_box.pack_end(self.lbl_learned_rules, False, False, 0)
         learning_card.pack_start(learn_stats_box, False, False, 0)
 
         self.pack_start(learning_card, False, False, 0)
@@ -1117,9 +1118,11 @@ class OrchestraWidget(Gtk.Box):
                 self.lbl_locked_strategies.set_tooltip_text("Нет зафиксированных стратегий (требуется >= 3 успехов)")
         if hasattr(self, "lbl_blocked_strategies") and self.lbl_blocked_strategies is not None:
             self.lbl_blocked_strategies.set_text(f"Заблокировано (Blocked): {total_blocked}")
-        if hasattr(self, "lbl_learned_preset") and self.lbl_learned_preset is not None:
-            preset_name = self.learning_store.learned_preset_path.name if hasattr(self.learning_store, "learned_preset_path") else "learned_preset.conf"
-            self.lbl_learned_preset.set_text(f"Пользовательский пресет: {preset_name}")
+        lbl = getattr(self, "lbl_learned_rules", None) or getattr(self, "lbl_learned_preset", None)
+        if lbl is not None:
+            rules_path = getattr(self.learning_store, "learned_rules_path", getattr(self.learning_store, "learned_preset_path", None))
+            name_str = rules_path.name if rules_path else "learned_rules.conf"
+            lbl.set_text(f"Карта обучения: {name_str}")
 
     def reset_learning(self) -> None:
         """Сбрасывает зафиксированные и заблокированные стратегии, сохраняя историю прогонов."""

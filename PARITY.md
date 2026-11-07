@@ -20,7 +20,7 @@
 | **5** | **Диагностика и классификация** | 🟢 Готово | `22cf7ef..HEAD` | DPIClassifier + diagnostics v2: разделение collect/judge, проверка DNS по SAN/issuer/сроку сертификата, пробы с настоящим SNI, example.com, без SNI, recased, max.ru/ya.ru/vk.com, окно 1B vs 1KB (wssize), исходы «через раз», «не до конца», «нет адреса», замер QUIC с ценой отказа и автопроверка после применения в UI |
 | **6** | **DNS, hosts и управление списками** | 🟢 Готово | `44400d6` | DoH (RFC 8484) и DoT (RFC 7858) провайдеры (Cloudflare, Google, Quad9, AdGuard и др.) с RTT-пробами и фолбэком, ListManager с семантикой `!домен` |
 | **7** | **Обновления, целостность, журнал** | 🟢 Готово | `e82fa9b` | LogAnalyzer, SupportBundle (.tar.gz), install_integrity (fast наличие+размер, full SHA-256 с retry заблокированных файлов) |
-| **8** | **Telegram Proxy (сознательное отклонение)** | ⚪ В очереди | — | Сознательное архитектурное отклонение от встроенного WSS proxy оригинала в пользу внешней легковесной обёртки |
+| **8** | **Telegram Proxy (сознательно не портировано)** | 🟢 Закрыто | — | Внешний tg-ws-proxy уже установлен и работает на системе, интеграция в GUI не требуется по решению владельца |
 | **10** | **Упаковка, релизы, документация** | 🟢 Готово | `530a4cc` | Arch PKGBUILD, FreeDesktop zapret-gui.desktop, systemd unit, install.sh и uninstall.sh (системный / opt и портативный режимы) |
 
 ---
@@ -207,43 +207,43 @@
 | Критерий DoD | Доказательство в коде | Доказательство тестом | Статус |
 |---|---|---|:---:|
 | **0. Единый источник версии и лицензия** | `version.py:__version__`, `LICENSE`, `NOTICE` | `tests/test_guards.py::test_version_single_source`, `test_no_hardcoded_version_literal_in_code` | 🟢 Готово |
-| **1.1. Безопасность UDP firewall и ct-лимиты** | `zapret2_core.py:is_voice_media_port`, `carve_range_from_voices`, `render_nftables` | `tests/test_udp_firewall.py::test_no_ct_overrides_in_unmetered_voice` | 🟢 Готово |
-| **1.2. Изоляция flock, безопасный PID и пути** | `engine.sh:acquire_lock` (fd 200 в `/run/zapret-gui/engine.lock`), нет blind `pkill -9` | `tests/test_guards.py::test_engine_sh_keeps_stage1_hardening`, `tests/test_engine_lock.py` | 🟢 Готово |
-| **1.3. Контроль запуска ядра и откат при сбое** | `engine.sh:wait_for_process_start`, `rollback_startup` | `tests/test_engine_behavior.py::test_rollback_on_failed_start` | 🟢 Готово |
-| **1.4. Честный статус ядра и исцеление NFQWS_ONLY** | `engine.sh:status_engine`, `healer.py:HealerFSM` | `tests/test_healer_fsm.py`, `tests/test_engine_behavior.py` | 🟢 Готово |
-| **1.5. Pre-flight DNS резолвера и trap rollback** | `engine.sh:verify_dns_resolver`, `engine.sh:run_blockcheck2` trap EXIT | `tests/test_engine_behavior.py::test_dns_resolver_rollback` | 🟢 Готово |
-| **1.6. Root privilege isolation и валидация путей** | `engine.sh:validate_exec_target` (проверка владельца root в системных путях) | `tests/test_engine_behavior.py::test_validate_exec_target` | 🟢 Готово |
-| **1.7. Атомарный /etc/hosts менеджер** | `hosts_manager.py:atomic_write_hosts`, RFC-валидация, timestamped backup | `tests/test_hosts_manager.py::test_atomic_write_and_backup` | 🟢 Готово |
-| **1.8. EngineParams dataclass и строгий clamping** | `engine_params.py:EngineParams`, `_as_int` (1..128), `_as_bool` | `tests/test_engine_params.py::test_conntrack_clamping` | 🟢 Готово |
-| **1.9. Config v2 со схемой, валидацией и треем** | `config_manager.py:load_config`, `save_config`, `validate_config_v2` | `tests/test_config_migration.py::test_schema_v2_migration` | 🟢 Готово |
-| **1.10. Честный асинхронный UI без зависаний** | `main.py:run_engine_async`, `safe_idle`, UI не вызывает `subprocess` | `tests/test_guards.py::test_thread_workers_do_not_create_widgets`, `test_page_builders_do_not_call_subprocess_directly` | 🟢 Готово |
-| **2.1. Золотой снапшот 136 пресетов Flowseal** | `tests/snapshots/preset_ids.txt`, `zapret2/presets/` | `tests/test_preset_golden_ids.py::test_snapshot_matches_filesystem` | 🟢 Готово |
-| **2.2. Модель каталога пресетов (63 сем. / 136 версий)** | `catalog/preset_catalog.py:PresetCatalog`, численный SemVer | `tests/test_catalog_model.py::test_family_grouping_and_semver_sort` | 🟢 Готово |
-| **2.3. Двухуровневый выбор пресетов в UI** | `main.py:create_presets_page`, компактные vs все версии | `tests/test_presets_ui.py::test_compact_and_full_view` | 🟢 Готово |
-| **2.4. SSOT пресетов для Healer и главного окна** | Отсутствие захардкоженных списков, загрузка через `PresetCatalog` | `tests/test_healer_ssot.py::test_no_hardcoded_presets_in_healer` | 🟢 Готово |
-| **2.5. Редактор пресетов GtkSource с --skip профилями** | `zapret2_ui.py:PresetEditorDialog`, `replace_profile` `--skip` | `tests/test_preset_editor.py::test_skip_profile_toggle` | 🟢 Готово |
-| **3.1. Постоянная строка статуса (PersistentStatusBar)** | `persistent_bar.py:PersistentStatusBar`, a11y фокус и тултипы | `tests/test_persistent_bar.py::test_bar_status_updates` | 🟢 Готово |
+| **1.1. Безопасность UDP firewall и ct-лимиты** | `zapret2_core.py:is_voice_media_port`, `carve_range_from_voices`, `render_nftables` | `test_udp_firewall.py::test_all_136_presets_udp_rules_strict_ct_or_voice` | 🟢 Готово |
+| **1.2. Изоляция flock, безопасный PID и пути** | `engine.sh:acquire_lock` (fd 200), нет blind `pkill -9` | `tests/test_guards.py::test_engine_sh_keeps_stage1_hardening`, `tests/test_engine_behavior.py::test_acquire_lock_idempotency_keeps_flock_locked` | 🟢 Готово |
+| **1.3. Контроль запуска ядра и откат при сбое** | `engine.sh:wait_for_process_start`, `rollback_startup` | `test_engine_lifecycle.py::test_wait_for_process_start_and_rollback_defined` | 🟢 Готово |
+| **1.4. Честный статус ядра и исцеление NFQWS_ONLY** | `engine.sh:status_engine`, `healer.py:HealerFSM` | `tests/test_healer_fsm.py`, `test_engine_lifecycle.py::test_status_engine_inspects_nft_list_table` | 🟢 Готово |
+| **1.5. Pre-flight DNS резолвера и trap rollback** | `engine.sh:verify_dns_resolver`, `engine.sh:run_blockcheck2` trap EXIT | `test_engine_lifecycle.py::test_dns_resolver_preflight_in_engine_sh` | 🟢 Готово |
+| **1.6. Root privilege isolation и валидация путей** | `engine.sh:validate_exec_target` (проверка владельца root в системных путях) | `test_engine_lifecycle.py::test_validate_exec_target_security_in_engine_sh` | 🟢 Готово |
+| **1.7. Атомарный /etc/hosts менеджер** | `hosts_manager.py:atomic_write_hosts`, RFC-валидация, timestamped backup | `test_hosts_manager.py::test_atomic_write_simulation_of_failure` | 🟢 Готово |
+| **1.8. EngineParams dataclass и строгий clamping** | `engine_params.py:EngineParams`, `_as_int` (1..128), `_as_bool` | `tests/test_engine_params.py::test_as_int_clamping` | 🟢 Готово |
+| **1.9. Config v2 со схемой, валидацией и треем** | `config_manager.py:load_config`, `save_config`, `validate_config_v2` | `tests/test_config_migration.py::test_migration_from_v1_legacy` | 🟢 Готово |
+| **1.10. Честный асинхронный UI без зависаний** | `main.py:run_engine_async`, `safe_idle`, UI не вызывает `subprocess` | `tests/test_guards.py::test_thread_workers_do_not_create_widgets`, `tests/test_honest_ui.py` | 🟢 Готово |
+| **2.1. Золотой снапшот 136 пресетов Flowseal** | `tests/snapshots/preset_ids.txt`, `zapret2/presets/` | `tests/test_preset_golden_ids.py::test_preset_catalog_ids_immutable` | 🟢 Готово |
+| **2.2. Модель каталога пресетов (63 сем. / 136 версий)** | `catalog/preset_catalog.py:PresetCatalog`, численный SemVer | `tests/test_preset_catalog.py::test_parse_alt1_vs_alt10_different_families` | 🟢 Готово |
+| **2.3. Двухуровневый выбор пресетов в UI** | `main.py:create_presets_page`, компактные vs все версии | `tests/test_ui_catalog.py::test_zapret2_ui_has_all_versions_toggle` | 🟢 Готово |
+| **2.4. SSOT пресетов для Healer и главного окна** | Отсутствие захардкоженных списков, загрузка через `PresetCatalog` | `tests/test_healer_ssot.py::test_healer_no_hardcoded_preset_lists` | 🟢 Готово |
+| **2.5. Редактор пресетов GtkSource с --skip профилями** | `zapret2_ui.py:PresetEditorDialog`, `replace_profile` `--skip` | `tests/test_preset_editor.py::test_profile_skip_toggle_preserves_structure` | 🟢 Готово |
+| **3.1. Постоянная строка статуса (PersistentStatusBar)** | `persistent_bar.py:PersistentStatusBar`, a11y фокус и тултипы | `tests/test_persistent_bar.py::test_update_status_active` | 🟢 Готово |
 | **3.2. 4-уровневый TrayManager с fallback** | `tray_manager.py:TrayManager` (Ayatana → AppIndicator → StatusIcon → none) | `tests/test_tray.py::TestTrayDetectionChain` | 🟢 Готово |
-| **3.3. Интерактивный онбординг первого запуска** | `onboarding.py:OnboardingTourDialog`, повтор по F1 и из настроек | `tests/test_onboarding.py::test_first_run_flag` | 🟢 Готово |
+| **3.3. Интерактивный онбординг первого запуска** | `onboarding.py:OnboardingTourDialog`, повтор по F1 и из настроек | `tests/test_onboarding.py::test_should_show_onboarding_flags` | 🟢 Готово |
 | **3.4. Темы оформления, геометрия окна, Ctrl+1..9** | `theme_manager.py:ThemeManager`, `window_state.py:WindowStateManager` | `tests/test_geometry_and_theme.py` | 🟢 Готово |
-| **4.1. Автоподбор пресетов (Orchestrator)** | `orchestra/orchestrator.py:Orchestrator`, стабильность 2 из 3, откат | `tests/test_orchestrator.py::test_orchestrator_stability_and_rollback` | 🟢 Готово |
+| **4.1. Автоподбор пресетов (Orchestrator)** | `orchestra/orchestrator.py:Orchestrator`, стабильность 2 из 3, откат | `tests/test_orchestrator.py::test_stability_requires_two_of_three` | 🟢 Готово |
 | **4.2. Адаптивное circular обучение (lock 3 / unlock 2)** | `orchestra/learning.py:LearningStore`, lock после 3 успехов, unlock после 2 сбоев | `tests/test_orchestra_learning.py::test_strategy_lock_after_three_successes`, `test_strategy_unlock_after_two_failures` | 🟢 Готово |
 | **4.3. Фильтрация белых доменов РФ и группировка поддоменов** | `orchestra/learning.py:is_russian_white_domain`, `group_subdomains`, `is_ignored_target` | `tests/test_orchestra_learning.py::test_russian_white_domains_filter`, `test_subdomain_grouping` | 🟢 Готово |
-| **4.4. Экспорт learned-пресета без изменения presets/** | `orchestra/learning.py:export_learned_preset` (пишет в отдельный файл) | `tests/test_orchestra_learning.py::test_learned_preset_does_not_touch_builtin_presets` | 🟢 Готово |
+| **4.4. Экспорт карты обучения без изменения presets/** | `orchestra/learning.py:export_learned_rules` (пишет в learned_rules.conf) | `tests/test_orchestra_learning.py::test_learned_preset_does_not_touch_builtin_presets` | 🟢 Готово |
 | **4.5. UI-индикация locked/blocked и сброс обучения** | `orchestra_ui.py:OrchestraWidget` (`lbl_locked_strategies`, `btn_reset_learning`) | `tests/test_orchestra_learning.py::test_orchestra_widget_learning_ui`, `test_reset_learning_preserves_history_store` | 🟢 Готово |
 | **5.1. DPI классификатор с Chrome TLS 1.3 и QUIC** | `dpi_classifier.py:DPIClassifier`, `curl_cffi` / `urllib` селектор транспорта | `tests/test_dpi_classifier.py`, `tests/test_transport_selection.py` | 🟢 Готово |
-| **5.2. Архитектура collect / judge без сети в судьях** | `diagnostics/collector.py:NetworkFactCollector`, `diagnostics/block_cause.py:judge_cause` | `tests/test_diagnostics_v2_and_integrity.py::test_judge_cause_pure_logic` | 🟢 Готово |
-| **5.3. DNS-судейство по сертификату и SAN на системном IP** | `diagnostics/collector.py:extract_real_tls_cert`, `diagnostics/verdict.py:judge_dns` | `tests/test_diagnostics_v2_ui.py::test_tls_handshake_cert_inspection_valid_and_spoofed` | 🟢 Готово |
+| **5.2. Архитектура collect / judge без сети в судьях** | `diagnostics/collector.py:NetworkFactCollector`, `diagnostics/block_cause.py:judge_cause` | `tests/test_diagnostics_v2_and_integrity.py::test_judge_cause_reply_window_wssize` | 🟢 Готово |
+| **5.3. DNS-судейство по сертификату и SAN на системном IP** | `diagnostics/collector.py:extract_real_tls_cert`, `diagnostics/verdict.py:judge_dns` | `tests/test_diagnostics_v2_ui.py::test_extract_real_tls_cert_mocked` | 🟢 Готово |
 | **5.4. Замер QUIC и расчет цены отказа в UI** | `diagnostics/quic_analyzer.py:QuicAnalyzer`, `main.py:on_quic_test_clicked` | `tests/test_quic_apply_ui.py::test_on_quic_test_clicked_headless` | 🟢 Готово |
 | **5.5. Автопроверка после «Применить» и переключение в 1 клик** | `diagnostics/apply_checker.py:ApplyChecker`, `main.py:verify_connectivity_after_apply` | `tests/test_quic_apply_ui.py::test_apply_checker_failure_shows_dialog_and_switches_preset` | 🟢 Готово |
 | **5.6. BlockCheck2 без || true и с захватом returncode** | `engine.sh:run_blockcheck2` (`|| RC=$?`, `return $RC`), `blockcheck2_runner.py` | `tests/test_guards.py::test_engine_sh_run_blockcheck2_propagates_returncode_without_swallowing`, `tests/test_diagnostics_v2_ui.py::test_blockcheck2_runner_timeout_and_finally_restoration` | 🟢 Готово |
-| **5.7. SSOT words.py без дублирования вердиктов** | `diagnostics/words.py:VERDICTS`, `dpi_classifier.get_block_verdict` делегирует в words | `tests/test_diagnostics_v2_ui.py::test_words_ssot_no_duplicates_and_all_verdicts_defined` | 🟢 Готово |
-| **6.1. DoH/DoT провайдеры с замером RTT в UI** | `dns_providers.py:DNSProviderCatalog`, `main.py:create_dns_page` | `tests/test_dns_ui.py::test_dns_rtt_probe_and_sorting` | 🟢 Готово |
-| **6.2. ListManager с семантикой !домен и компиляцией** | `list_manager.py:ListManager`, `main.py:create_hosts_page` | `tests/test_list_ui.py::test_exclamation_domain_semantics` | 🟢 Готово |
-| **7.1. LogAnalyzer с 5 классами инцидентов** | `log_analyzer.py:LogAnalyzer`, `main.py:create_logs_page` | `tests/test_support_ui.py::test_log_analysis_ui` | 🟢 Готово |
-| **7.2. Санитизированный SupportBundle без утечек** | `support_bundle.py:create_support_bundle`, `main.py:on_create_support_bundle` | `tests/test_support_ui.py::test_support_bundle_sanitization` | 🟢 Готово |
-| **7.3. Install Integrity (fast pre-flight и full SHA-256)** | `install_integrity/verifier.py`, `main.py:start_engine`, `on_verify_integrity` | `tests/test_diagnostics_v2_ui.py::test_integrity_fast_blocks_launch_on_corrupted_binary`, `test_on_verify_integrity_dialog` | 🟢 Готово |
-| **8.1. Telegram Proxy (встроенный WSS)** | Не реализован в GUI (сознательное архитектурное отклонение в пользу внешней легковесной обёртки) | Сознательное архитектурное отклонение по согласованию с владельцем | ⚪ Отклонение |
-| **9.1. Статические AST-стражи и CI пайплайн** | `tests/test_guards.py`, `.github/workflows/ci.yml` | `pytest tests/test_guards.py` (7/7 passed) | 🟢 Готово |
-| **10.1. Пакеты, systemd unit, инсталляторы** | `packaging/PKGBUILD`, `install.sh`, `uninstall.sh`, `zapret-gui.desktop` | `tests/test_packaging.py` | 🟢 Готово |
+| **5.7. SSOT words.py без дублирования вердиктов** | `diagnostics/words.py:VERDICTS`, `dpi_classifier.get_block_verdict` делегирует в words | `tests/test_diagnostics_v2_ui.py::test_words_no_duplicates_and_ssot` | 🟢 Готово |
+| **6.1. DoH/DoT провайдеры с замером RTT в UI** | `dns_providers.py:DNSProviderCatalog`, `main.py:create_dns_page` | `tests/test_dns_ui.py::test_dns_ui_probe_all_rtt_and_sorting` | 🟢 Готово |
+| **6.2. ListManager с семантикой !домен и компиляцией** | `list_manager.py:ListManager`, `main.py:create_hosts_page` | `tests/test_list_ui.py::test_list_ui_compile_effective_lists_and_subdomain_pruning` | 🟢 Готово |
+| **7.1. LogAnalyzer с 5 классами инцидентов** | `log_analyzer.py:LogAnalyzer`, `main.py:create_logs_page` | `tests/test_support_ui.py::test_analyze_log_clean_report` | 🟢 Готово |
+| **7.2. Санитизированный SupportBundle без утечек** | `support_bundle.py:create_support_bundle`, `main.py:on_create_support_bundle` | `tests/test_support_ui.py::test_support_bundle_button_flow_and_args` | 🟢 Готово |
+| **7.3. Install Integrity (fast pre-flight и full SHA-256)** | `install_integrity/verify.py`, `main.py:start_engine`, `on_verify_integrity` | `tests/test_diagnostics_v2_ui.py::test_install_integrity_fast_blocks_launch`, `test_on_verify_integrity_dialog` | 🟢 Готово |
+| **8.1. Telegram Proxy (встроенный WSS)** | Не портирован в GUI (сознательное архитектурное решение: используется внешний tg-ws-proxy) | Решение владельца: внешний tg-ws-proxy уже установлен и работает | 🟢 Закрыто (сознательно не портировано) |
+| **9.1. Статические AST-стражи и CI пайплайн** | `tests/test_guards.py`, `.github/workflows/ci.yml` | `tests/test_guards.py` | 🟢 Готово |
+| **10.1. Пакеты, systemd unit, инсталляторы** | `packaging/PKGBUILD`, `install.sh`, `uninstall.sh`, `packaging/zapret-gui.desktop` | `tests/test_packaging.py` | 🟢 Готово |
 

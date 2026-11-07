@@ -172,24 +172,28 @@ class TargetStrategyStat:
 class LearningStore:
     """
     Adaptive circular learning manager.
-    Maintains lock/unlock states, blocked strategies, and generates learned presets.
+    Maintains lock/unlock states, blocked strategies, and generates learned strategy mappings.
     Stored independently in a JSON file to prevent settings pollution.
     """
 
     LOCK_SUCCESS_THRESHOLD = 3
     UNLOCK_FAILURE_THRESHOLD = 2
+    BLOCK_FAILURE_THRESHOLD = 5  # consecutive failures on target group without prior success triggers auto-block
 
     def __init__(
         self,
         storage_path: Path | str,
+        learned_rules_path: Optional[Path | str] = None,
         learned_preset_path: Optional[Path | str] = None,
     ):
         self.storage_path = Path(storage_path)
-        self.learned_preset_path = (
-            Path(learned_preset_path)
-            if learned_preset_path
-            else self.storage_path.parent / "learned_preset.conf"
+        active_rules_path = learned_rules_path or learned_preset_path
+        self.learned_rules_path = (
+            Path(active_rules_path)
+            if active_rules_path
+            else self.storage_path.parent / "learned_rules.conf"
         )
+        self.learned_preset_path = self.learned_rules_path  # backward-compatible alias
         self._stats: Dict[Tuple[str, str], TargetStrategyStat] = {}
         self._blocked: Dict[str, Set[str]] = {}  # target_group -> set of blocked strategies
         self._custom_ignored: Set[str] = set()
@@ -284,36 +288,42 @@ class LearningStore:
             if stat.locked and stat.consecutive_failures >= self.UNLOCK_FAILURE_THRESHOLD:
                 stat.locked = False
 
+            # Auto-block strategy for this target group after reaching failure threshold
+            if stat.consecutive_failures >= self.BLOCK_FAILURE_THRESHOLD and stat.total_successes == 0:
+                if grp not in self._blocked:
+                    self._blocked[grp] = set()
+                self._blocked[grp].add(strategy)
+
         return stat
 
     def reset_learning(self) -> None:
         """
-        Clears all learned locks, stats, and blocked strategies.
+        Clears all learned locks, stats, and blocked strategies (both manual and auto-blocked).
         Preserves HistoryStore run history records!
         """
         self._stats.clear()
         self._blocked.clear()
         self._custom_ignored.clear()
         self.save()
-        if self.learned_preset_path.exists():
+        if self.learned_rules_path.exists():
             try:
-                self.learned_preset_path.unlink()
+                self.learned_rules_path.unlink()
             except OSError:
                 pass
 
-    def export_learned_preset(self, output_path: Optional[Path | str] = None) -> Path:
+    def export_learned_rules(self, output_path: Optional[Path | str] = None) -> Path:
         """
-        Exports currently locked strategies into a separate learned preset file.
+        Exports currently locked strategies into a separate learned mapping file.
         Built-in presets/ are strictly unmodified.
         """
-        target_path = Path(output_path) if output_path else self.learned_preset_path
+        target_path = Path(output_path) if output_path else self.learned_rules_path
         target_path.parent.mkdir(parents=True, exist_ok=True)
 
         locked = self.get_locked_strategies()
         lines = [
-            "# Zapret Orchestra - Пользовательский learned-пресет",
+            "# Zapret Orchestra - Карта стратегий обучения (Target => Strategy)",
             f"# Сгенерировано: {time.strftime('%Y-%m-%d %H:%M:%S')}",
-            "# Встроенные пресеты не изменены. Данный файл сформирован адаптивным обучением.",
+            "# Встроенные пресеты не изменены. Данный файл содержит адаптивную карту правил для целей.",
             "",
         ]
 
@@ -328,6 +338,8 @@ class LearningStore:
             f.write(content)
 
         return target_path
+
+    export_learned_preset = export_learned_rules  # backward-compatible alias
 
     def load(self) -> None:
         """Loads state from JSON storage."""

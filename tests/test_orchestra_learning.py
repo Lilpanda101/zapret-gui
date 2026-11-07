@@ -243,3 +243,68 @@ def test_orchestra_widget_learning_ui(tmp_path):
     assert "Зафиксировано (Locked): 0" in widget.lbl_locked_strategies.get_text()
     assert "Заблокировано (Blocked): 0" in widget.lbl_blocked_strategies.get_text()
     assert len(store.get_locked_strategies()) == 0
+
+
+def test_auto_blocking_after_consecutive_failures(tmp_path):
+    store = LearningStore(tmp_path / "learning.json")
+
+    # 4 failures: not blocked yet
+    for _ in range(4):
+        store.record_attempt("youtube.com", "broken_strategy", success=False)
+    assert store.is_strategy_blocked("youtube.com", "broken_strategy") is False
+    assert len(store.get_blocked_strategies("youtube.com")["youtube.com"]) == 0
+
+    # 5th failure: triggers BLOCK_FAILURE_THRESHOLD (5)
+    store.record_attempt("youtube.com", "broken_strategy", success=False)
+    assert store.is_strategy_blocked("youtube.com", "broken_strategy") is True
+    assert "broken_strategy" in store.get_blocked_strategies("youtube.com")["youtube.com"]
+
+    # Subdomains of youtube.com also consider it blocked
+    assert store.is_strategy_blocked("i.ytimg.com", "broken_strategy") is True
+
+    # Reset learning clears auto-blocked strategies
+    store.reset_learning()
+    assert store.is_strategy_blocked("youtube.com", "broken_strategy") is False
+
+
+def test_single_learning_store_shared_between_widget_and_app(tmp_path):
+    import main
+
+    class FakeAppWithLearning(Gtk.Window):
+        def __init__(self):
+            super().__init__()
+            self.learning_store = LearningStore(tmp_path / "shared_learning.json")
+            self.engine_mode = "nfqws2"
+            self.zapret2_preset = "general"
+            self.active_iface = "any"
+
+        def create_orchestra_page(self, **kwargs):
+            return main.Zapret2App.create_orchestra_page(self, **kwargs)
+
+    app = FakeAppWithLearning()
+    scrolled = app.create_orchestra_page()
+    assert hasattr(app, "orchestra_widget")
+
+    # Verify that widget uses the exact same instance (is check)
+    assert app.orchestra_widget.learning_store is app.learning_store
+
+    # Test that recording in app learning_store reflects in widget without restart
+    for _ in range(3):
+        app.learning_store.record_attempt("googlevideo.com", "flowseal_win", success=True)
+    app.orchestra_widget.update_learning_ui()
+
+    assert "Зафиксировано (Locked): 1" in app.orchestra_widget.lbl_locked_strategies.get_text()
+    assert "Карта обучения: learned_rules.conf" in app.orchestra_widget.lbl_learned_rules.get_text()
+
+
+def test_learned_rules_export_file_and_ui_naming(tmp_path):
+    store = LearningStore(tmp_path / "learning.json")
+    for _ in range(3):
+        store.record_attempt("googlevideo.com", "strategy_win", success=True)
+
+    out = store.export_learned_rules()
+    assert out.name == "learned_rules.conf"
+    assert out.exists()
+    content = out.read_text(encoding="utf-8")
+    assert "Карта стратегий обучения (Target => Strategy)" in content
+    assert "target: googlevideo.com => strategy: strategy_win" in content
