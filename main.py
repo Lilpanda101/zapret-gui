@@ -57,6 +57,20 @@ from dpi_classifier import (
     classify_domains,
     get_block_verdict,
 )
+from diagnostics import (
+    STATUS_NOT_CHECKED,
+    STATUS_CHECKING,
+    STATUS_BLOCKED_OR_TIMEOUT,
+    STATUS_ERROR,
+    STATUS_DIAGNOSTICS_RUNNING,
+    STATUS_BLOCKCHECK2_PREPARING,
+    get_verdict_words,
+    classify_http_response,
+    DomainInspector,
+    QuicAnalyzer,
+    ApplyChecker,
+    BlockCheck2Runner,
+)
 from version import __version__, APP_TITLE, APP_SUBTITLE, APP_DESCRIPTION
 from engine_params import EngineParams
 from status_presenter import StatusPresenter
@@ -1356,7 +1370,7 @@ class Zapret2App(Gtk.Window):
         # Apply Preset Button
         btn_apply = Gtk.Button(label="Применить выбранный пресет")
         btn_apply.get_style_context().add_class("fluent-btn-primary")
-        btn_apply.connect("clicked", lambda _: self.restart_engine())
+        btn_apply.connect("clicked", lambda _: self.restart_engine(check_after=True))
         vbox.pack_start(btn_apply, False, False, 8)
 
         return page
@@ -2505,49 +2519,87 @@ class Zapret2App(Gtk.Window):
         native.pack_start(scroll, True, True, 0)
         vbox.pack_start(native, False, False, 0)
 
+        # Карточка детальной проверки домена и QUIC
+        card_domain = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        card_domain.get_style_context().add_class("fluent-card")
+
+        dom_hdr = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        dom_title_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        dom_title_vbox.pack_start(
+            Gtk.Label(label="<b>Технический аудит домена и замер QUIC</b>", use_markup=True, xalign=0),
+            False, False, 0,
+        )
+        dom_title_vbox.pack_start(
+            Gtk.Label(
+                label="Сравнение DNS (UDP/DoT/DoH), TCP 443, TLS сертификат (SAN/срок), замер QUIC и цена отказа",
+                xalign=0,
+            ),
+            False, False, 0,
+        )
+        dom_hdr.pack_start(dom_title_vbox, True, True, 0)
+        card_domain.pack_start(dom_hdr, False, False, 0)
+
+        dom_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.entry_inspect_domain = Gtk.Entry()
+        self.entry_inspect_domain.set_text("rutracker.org")
+        self.entry_inspect_domain.set_placeholder_text("Домен для проверки (например, rutracker.org)")
+        dom_row.pack_start(self.entry_inspect_domain, True, True, 0)
+
+        self.chk_external_asn = Gtk.CheckButton(label="Запрашивать ASN (внешний сервис)")
+        self.chk_external_asn.set_active(False)
+        self.chk_external_asn.set_tooltip_text("Безопасный запрос ASN через ipapi. Локальные IP наружу не отправляются.")
+        dom_row.pack_start(self.chk_external_asn, False, False, 0)
+
+        self.btn_inspect_domain = Gtk.Button(label="Аудит домена")
+        self.btn_inspect_domain.get_style_context().add_class("fluent-btn-secondary")
+        self.btn_inspect_domain.connect("clicked", self.on_inspect_domain_clicked)
+        dom_row.pack_end(self.btn_inspect_domain, False, False, 0)
+
+        self.btn_quic_test = Gtk.Button(label="Замерить QUIC")
+        self.btn_quic_test.get_style_context().add_class("fluent-btn-secondary")
+        self.btn_quic_test.connect("clicked", self.on_quic_test_clicked)
+        dom_row.pack_end(self.btn_quic_test, False, False, 0)
+        card_domain.pack_start(dom_row, False, False, 0)
+
+        dom_scroll = Gtk.ScrolledWindow()
+        dom_scroll.set_size_request(-1, 160)
+        self.inspect_buffer = Gtk.TextBuffer()
+        self.inspect_output = Gtk.TextView(buffer=self.inspect_buffer)
+        self.inspect_output.set_editable(False)
+        self.inspect_output.set_monospace(True)
+        dom_scroll.add(self.inspect_output)
+        card_domain.pack_start(dom_scroll, True, True, 0)
+
+        vbox.pack_start(card_domain, False, False, 0)
+
         return page
 
     def on_blockcheck2(self, _):
         domain = self.blockcheck2_domain.get_text().strip()
         self.btn_blockcheck2.set_sensitive(False)
-        self.blockcheck2_buffer.set_text("Подготовка Blockcheck2. Текущий движок будет остановлен...\n")
+        self.blockcheck2_buffer.set_text(STATUS_BLOCKCHECK2_PREPARING)
         was_running = self.is_running
         restore = self.engine_command()
 
+        runner = BlockCheck2Runner(
+            run_engine_fn=run_engine,
+            engine_was_running=was_running,
+            engine_restore_args=restore,
+            active_iface=self.active_iface,
+            active_dns=self.active_dns,
+            timeout_s=900,
+        )
+
         def worker():
-            restore_error = ""
-            try:
-                if was_running:
-                    stopped = run_engine("stop", self.active_iface)
-                    if stopped.returncode != 0:
-                        raise RuntimeError("Не удалось остановить движок:\n" + (stopped.stderr or stopped.stdout))
-                result = run_engine("blockcheck2", domain, self.active_iface, self.active_dns)
-                output = (result.stdout + result.stderr).strip()
-                if result.returncode == 124:
-                    output = "ВНИМАНИЕ: лимит 15 минут исчерпан. Ниже частичный результат, перебор не завершён.\n\n" + output
-                elif result.returncode != 0:
-                    output = f"ОШИБКА: Blockcheck2 завершился с кодом {result.returncode}.\n\n" + output
-            except Exception as exc:
-                output = "ОШИБКА ЗАПУСКА BLOCKCHECK2:\n" + str(exc)
-            finally:
-                if was_running:
-                    try:
-                        restored = run_engine(*restore)
-                        if restored.returncode != 0:
-                            restore_error = "\n\nОШИБКА ВОССТАНОВЛЕНИЯ ДВИЖКА:\n" + (restored.stderr or restored.stdout)
-                    except Exception as exc:
-                        restore_error = "\n\nОШИБКА ВОССТАНОВЛЕНИЯ ДВИЖКА:\n" + str(exc)
-                else:
-                    # Движок не был запущен -> обязательно восстанавливаем системный DNS
-                    try:
-                        run_engine("dns", self.active_iface, "system")
-                    except Exception:
-                        pass
+            res = runner.run(domain)
+            # При незапущенном движке DNS восстанавливается на системный: run_engine("dns", self.active_iface, "system")
+            final_text = f"Статус: {res.status_summary}\n\n{res.output[-14000:]}{res.restore_error}"
 
             def finish():
-                self.blockcheck2_buffer.set_text(output[-14000:] + restore_error)
+                self.blockcheck2_buffer.set_text(final_text)
                 self.btn_blockcheck2.set_sensitive(True)
                 self.refresh_status()
+
             GLib.idle_add(finish)
 
         threading.Thread(target=worker, daemon=True).start()
@@ -2766,14 +2818,15 @@ class Zapret2App(Gtk.Window):
                         txt = f"Доступен ({e.code}, {dt} ms)"
                         cls = "badge-ok"
                     elif e.code in (400, 401, 403, 405):
-                        txt = f"Ответ HTTP {e.code} ({dt} ms)"
+                        # 403 / 429 - сайт закрыт владельцем, не блокировка ТСПУ
+                        txt = f"Ограничен сайтом ({e.code}, {dt} ms)" if e.code in (403, 429) else f"Ответ HTTP {e.code} ({dt} ms)"
                         cls = "badge-warn"
                     else:
                         txt = f"HTTP {e.code} ({dt} ms)"
                         cls = "badge-bad"
                     GLib.idle_add(self.update_check_badge, self.check_badges[key], txt, cls)
                 except Exception as e:
-                    GLib.idle_add(self.update_check_badge, self.check_badges[key], "Заблокирован / Таймаут", "badge-bad")
+                    GLib.idle_add(self.update_check_badge, self.check_badges[key], STATUS_BLOCKED_OR_TIMEOUT, "badge-bad")
 
             GLib.idle_add(lambda: self.btn_run_check.set_sensitive(True))
         threading.Thread(target=worker, daemon=True).start()
@@ -2781,13 +2834,13 @@ class Zapret2App(Gtk.Window):
     def on_classify_tspu(self, _=None):
         domain = self.entry_tspu_domain.get_text().strip()
         if not domain:
-            self.update_check_badge(self.tspu_badge, "Ошибка (ERROR)", "badge-bad")
+            self.update_check_badge(self.tspu_badge, STATUS_ERROR, "badge-bad")
             self.tspu_diag_buffer.set_text("Ошибка: введите доменное имя для диагностики (например, rutracker.org).\n")
             return
 
         self.btn_tspu_classify.set_sensitive(False)
-        self.update_check_badge(self.tspu_badge, "Проверка...", "badge-neutral")
-        self.tspu_diag_buffer.set_text(f"Запуск глубокой диагностики ТСПУ для {domain}...\n")
+        self.update_check_badge(self.tspu_badge, STATUS_CHECKING, "badge-neutral")
+        self.tspu_diag_buffer.set_text(f"{STATUS_DIAGNOSTICS_RUNNING} ({domain})\n")
 
         def tspu_worker():
             try:
@@ -2806,9 +2859,26 @@ class Zapret2App(Gtk.Window):
                 res = report.results[0]
                 verdict = get_block_verdict(res.block_type)
 
+                # Строка строгого доказательства
+                from diagnostics import EvidenceVerdict, BlockVerdictType
+                proof_line = f"Зафиксирован отклик ТСПУ: {res.block_type.value} ({res.details or 'сигнатура подтверждена'})"
+                if res.block_type.value == "PASS":
+                    proof_line = "Соединение установлено без вмешательства ТСПУ: код ответа и TLS валидны"
+                elif res.block_type.value == "DNS_SPOOFING":
+                    proof_line = f"DNS запрос вернул поддельный/заглушечный IP: {res.ip}"
+                elif res.block_type.value == "TLS_SNI_DROP":
+                    proof_line = "TCP handshake успешен, сброс соединения сразу после отправки ClientHello со SNI"
+                elif res.block_type.value == "TCP_RST_INJECTION":
+                    proof_line = "Принудительный пакет TCP RST внедрен фильтром оператора при рукопожатии"
+                elif res.block_type.value == "HTTP_BLOCKPAGE":
+                    proof_line = "HTTP трафик перехвачен и перенаправлен на страницу реестра/заглушку"
+                elif res.block_type.value == "QUIC_BLACKHOLE":
+                    proof_line = "UDP пакеты QUIC Initial дропаются (blackhole), TCP доступен"
+
                 lines = [
                     f"=== РЕЗУЛЬТАТ ДИАГНОСТИКИ ТСПУ: {res.target} ===",
                     f"Тип блокировки (BlockType): {res.block_type.value}",
+                    f"Доказательство вердикта: {proof_line}",
                     f"Уровень угрозы: {verdict['severity']}",
                     f"Краткое описание: {verdict['description']}",
                     f"Рекомендация: {verdict['recommendation']}",
@@ -2836,13 +2906,119 @@ class Zapret2App(Gtk.Window):
 
                 def update_ui_error():
                     self.tspu_diag_buffer.set_text(err_text)
-                    self.update_check_badge(self.tspu_badge, "Ошибка (ERROR)", "badge-bad")
+                    self.update_check_badge(self.tspu_badge, STATUS_ERROR, "badge-bad")
                     self.btn_tspu_classify.set_sensitive(True)
 
                 GLib.idle_add(update_ui_error)
 
         self._tspu_thread = threading.Thread(target=tspu_worker, daemon=True)
         self._tspu_thread.start()
+
+    def on_inspect_domain_clicked(self, _=None):
+        domain = self.entry_inspect_domain.get_text().strip()
+        if not domain:
+            self.inspect_buffer.set_text("Ошибка: введите домен для аудита.\n")
+            return
+
+        self.btn_inspect_domain.set_sensitive(False)
+        self.inspect_buffer.set_text(f"Выполняется глубокий аудит домена {domain}...\n")
+        allow_asn = self.chk_external_asn.get_active()
+
+        def worker():
+            try:
+                inspector = DomainInspector(allow_external_asn=allow_asn, timeout=3.5)
+                rep = inspector.inspect(domain)
+
+                lines = [
+                    f"=== АУДИТ ДОМЕНА: {rep.domain} ===",
+                    f"Итоговый вердикт: {rep.summary_verdict}",
+                    f"Доказательство: {rep.proof_line}",
+                    f"Целевой IP: {rep.target_ip or 'не определен'}",
+                    "",
+                    "--- DNS РЕЗОЛЮЦИЯ И СРАВНЕНИЕ РЕЗОЛВЕРОВ ---",
+                    f"Статус DNS: {'ПОДМЕНА (SPOOFED)' if rep.dns_spoofed else 'СОГЛАСОВАН'}",
+                    f"Детали DNS: {rep.dns_details}",
+                ]
+                for r_name, ips in rep.dns_resolutions.items():
+                    lines.append(f"  • {r_name}: {', '.join(ips) if ips else 'нет ответа'}")
+
+                lines.extend([
+                    "",
+                    "--- ТРАНСПОРТНЫЙ И СЕССИОННЫЙ УРОВЕНЬ ---",
+                    f"ICMP Ping: {'Доступен' if rep.icmp_available else 'Недоступен'} ({rep.icmp_rtt_ms or '-'} ms)",
+                    f"TCP 443 Handshake: {'Установлен' if rep.tcp_connected else 'Сброшен / Таймаут'} ({rep.tcp_rtt_ms or '-'} ms)",
+                    f"TLS Соединение: {'Успешно' if rep.tls_connected else 'Сброшено (SNI drop)'}",
+                    f"Версия TLS: {rep.tls_version or '-'}",
+                    f"Шифрсьют: {rep.tls_cipher or '-'}",
+                ])
+
+                if rep.cert_info:
+                    lines.extend([
+                        "",
+                        "--- СЕРТИФИКАТ СЕРВЕРА (X.509) ---",
+                        f"Subject: {rep.cert_info.subject}",
+                        f"Issuer: {rep.cert_info.issuer}",
+                        f"Срок действия: {rep.cert_info.not_before} — {rep.cert_info.not_after}",
+                        f"SAN (Subject Alt Names): {', '.join(rep.cert_info.san[:5])}{'...' if len(rep.cert_info.san) > 5 else ''}",
+                    ])
+
+                lines.extend([
+                    "",
+                    "--- АВТОНОМНАЯ СИСТЕМА (ASN) ---",
+                    f"Номер AS: {rep.asn_number or 'не определен'}",
+                    f"Организация: {rep.asn_org or 'не определена'}",
+                    f"Страна: {rep.asn_country or '-'}",
+                    f"Источник: {rep.asn_source}",
+                ])
+
+                output = "\n".join(lines)
+            except Exception as exc:
+                output = f"Ошибка аудита домена:\n{exc}"
+
+            def finish():
+                self.inspect_buffer.set_text(output)
+                self.btn_inspect_domain.set_sensitive(True)
+
+            GLib.idle_add(finish)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def on_quic_test_clicked(self, _=None):
+        domain = self.entry_inspect_domain.get_text().strip()
+        if not domain:
+            self.inspect_buffer.set_text("Ошибка: введите домен для замера QUIC.\n")
+            return
+
+        self.btn_quic_test.set_sensitive(False)
+        self.inspect_buffer.set_text(f"Замер протокола QUIC (UDP 443) vs TCP 443 для {domain}...\n")
+
+        def worker():
+            try:
+                analyzer = QuicAnalyzer(timeout=3.0)
+                verdict = analyzer.analyze(domain)
+
+                lines = [
+                    f"=== ЗАМЕР QUIC / HTTP/3: {verdict.domain} ===",
+                    f"QUIC (UDP 443): {'Доступен' if verdict.quic_available else 'Блокируется ТСПУ (Blackhole)'} ({verdict.quic_rtt_ms or '-'} ms)",
+                    f"TCP 443: {'Доступен' if verdict.tcp_available else 'Недоступен'} ({verdict.tcp_rtt_ms or '-'} ms)",
+                    f"Разница в задержке: {verdict.penalty_ms or '-'} ms",
+                    "",
+                    f"Вердикт: {verdict.verdict_text}",
+                    f"Рекомендация: {verdict.recommendation}",
+                    "",
+                    f"ЦЕНА ОТКАЗА ОТ QUIC: {verdict.price_of_refusal}",
+                ]
+                output = "\n".join(lines)
+            except Exception as exc:
+                output = f"Ошибка замера QUIC:\n{exc}"
+
+            def finish():
+                self.inspect_buffer.set_text(output)
+                self.btn_quic_test.set_sensitive(True)
+
+            GLib.idle_add(finish)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def update_check_badge(self, badge, text, css_cls):
         badge.set_text(text)
@@ -3345,7 +3521,7 @@ class Zapret2App(Gtk.Window):
         from engine_params import EngineParams
         return EngineParams.from_app(self).to_argv(command)
 
-    def start_engine(self):
+    def start_engine(self, check_after: bool = False):
         self.btn_toggle.set_sensitive(False)
         arguments = self.engine_command()
 
@@ -3357,8 +3533,59 @@ class Zapret2App(Gtk.Window):
                 if result.returncode != 0:
                     output = (result.stderr or result.stdout).strip()
                     self.show_dialog("Движок не запущен", output[-4000:])
+                elif check_after:
+                    self.verify_connectivity_after_apply()
             GLib.idle_add(finish)
         threading.Thread(target=worker, daemon=True).start()
+
+    def verify_connectivity_after_apply(self):
+        """Выполняет быструю автопроверку открытия сайта после применения стратегии.
+        При провале диагностирует причину и предлагает переключить пресет в 1 клик."""
+        curr_preset = getattr(self, "zapret2_preset", None) if getattr(self, "engine_mode", "") == "nfqws2" else getattr(self, "active_preset", "general")
+
+        def check_worker():
+            try:
+                checker = ApplyChecker(timeout=3.5)
+                outcome = checker.check(curr_preset)
+
+                if not outcome.success and outcome.suggested_preset:
+                    GLib.idle_add(self._show_apply_suggestion_dialog, outcome)
+            except Exception:
+                pass
+
+        threading.Thread(target=check_worker, daemon=True).start()
+
+    def _show_apply_suggestion_dialog(self, outcome):
+        dlg = Gtk.MessageDialog(
+            transient_for=self,
+            flags=0,
+            message_type=Gtk.MessageType.WARNING,
+            buttons=Gtk.ButtonsType.NONE,
+            text="Сайт недоступен после смены пресета",
+        )
+        dlg.format_secondary_text(
+            f"Тестовый ресурс не отвечает ({outcome.error}).\n\n"
+            f"Причина: {outcome.suggestion_reason}\n\n"
+            f"Предлагается переключить стратегию на «{outcome.suggested_preset}» в один клик."
+        )
+        dlg.add_button("Оставить как есть", Gtk.ResponseType.CANCEL)
+        btn_switch = dlg.add_button(f"Переключить на {outcome.suggested_preset}", Gtk.ResponseType.OK)
+        btn_switch.get_style_context().add_class("fluent-btn-primary")
+
+        resp = dlg.run()
+        dlg.destroy()
+        if resp == Gtk.ResponseType.OK:
+            self.apply_suggested_preset(outcome.suggested_preset)
+
+    def apply_suggested_preset(self, preset_name: str):
+        """Переключает пресет на рекомендованный одной кнопкой."""
+        is_z2 = getattr(self, "engine_mode", "nfqws2") == "nfqws2"
+        if is_z2:
+            self.zapret2_preset = preset_name
+        else:
+            self.active_preset = preset_name
+        self.save_config()
+        self.restart_engine(check_after=False)
 
     def stop_engine(self):
         self.btn_toggle.set_sensitive(False)
@@ -3368,8 +3595,8 @@ class Zapret2App(Gtk.Window):
             GLib.idle_add(lambda: self.refresh_status())
         threading.Thread(target=worker, daemon=True).start()
 
-    def restart_engine(self):
-        self.start_engine()
+    def restart_engine(self, check_after: bool = False):
+        self.start_engine(check_after=check_after)
 
     def switch_to_tab(self, name):
         if name in self.nav_buttons:

@@ -545,7 +545,12 @@ def make_curl_cffi_transport(impersonate: str = "chrome124") -> Optional[Callabl
         headers: Optional[Dict[str, str]] = None,
         timeout: float = 3.5,
     ) -> Tuple[int, Dict[str, str], str]:
-        req_headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"}
+        req_headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            )
+        }
         if headers:
             req_headers.update(headers)
         res = curl_requests.get(url, headers=req_headers, impersonate=impersonate, timeout=timeout)

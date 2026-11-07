@@ -553,6 +553,18 @@ class OrchestraWidget(Gtk.Box):
             self.network_monitor.start_monitoring(self.on_network_changed)
 
         self._build_ui()
+        self.update_transport_label()
+
+    def set_probe(self, probe_fn: Optional[Callable[[Target], Any]]) -> None:
+        """Динамически обновляет функцию пробы и синхронизирует отображение транспорта в UI."""
+        self.probe_fn = probe_fn if probe_fn is not None else select_probe()
+        self.update_transport_label()
+
+    def update_transport_label(self) -> None:
+        """Обновляет текст лейбла активного транспорта в реальном времени."""
+        if hasattr(self, "lbl_transport") and self.lbl_transport is not None:
+            transport_name = get_probe_transport_name(self.probe_fn)
+            self.lbl_transport.set_text(f"Транспорт проб: {transport_name}")
 
     def _load_default_catalog(self) -> Optional[PresetCatalog]:
         """Loads default presets catalog if available."""

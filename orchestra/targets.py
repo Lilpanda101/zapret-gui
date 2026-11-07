@@ -125,10 +125,11 @@ def get_probe_transport_name(probe_fn=None) -> str:
     """Returns human-readable name of the probe transport."""
     if probe_fn is None:
         probe_fn = select_probe()
+    tname = getattr(probe_fn, "transport_name", None)
+    if tname is not None and isinstance(tname, str):
+        return tname
     if getattr(probe_fn, "is_curl_cffi", False):
         return "Chrome (curl_cffi)"
-    if getattr(probe_fn, "transport_name", None):
-        return probe_fn.transport_name
     if probe_fn == http_probe:
         return "urllib (fallback)"
     name = getattr(probe_fn, "__name__", "")
