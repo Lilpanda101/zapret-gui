@@ -14,6 +14,15 @@ from gi.repository import Gtk, GLib
 
 from persistent_bar import PersistentStatusBar, create_persistent_bar
 
+# Emoji used by older call sites, mapped to monochrome symbolic icons.
+SETTING_ICONS = {
+    "⚡": "media-playback-start-symbolic",
+    "🌐": "network-wireless-symbolic",
+    "🔌": "preferences-system-symbolic",
+    "🚀": "go-up-symbolic",
+    "🤖": "applications-science-symbolic",
+}
+
 
 def create_page_container(title_text: str, subtitle_text: Optional[str] = None) -> Tuple[Gtk.ScrolledWindow, Gtk.Box]:
     """Creates a scrolled page with a constrained, centered content width for ultrawide displays."""
@@ -22,10 +31,11 @@ def create_page_container(title_text: str, subtitle_text: Optional[str] = None) 
 
     outer_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
     outer_box.set_halign(Gtk.Align.CENTER)
+    outer_box.set_valign(Gtk.Align.START)
     outer_box.set_hexpand(True)
     outer_box.set_size_request(920, -1)
-    outer_box.set_margin_top(22)
-    outer_box.set_margin_bottom(24)
+    outer_box.set_margin_top(30)
+    outer_box.set_margin_bottom(32)
     outer_box.set_margin_start(32)
     outer_box.set_margin_end(32)
     outer_box.get_style_context().add_class("content-wrapper")
@@ -53,9 +63,15 @@ def create_setting_row(icon_str: Optional[str], title_text: str, desc_text: Opti
     # Icon
     icon_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
     icon_box.get_style_context().add_class("setting-icon-box")
-    lbl_icon = Gtk.Label()
-    lbl_icon.set_markup(f"<span font='14'>{icon_str}</span>")
-    icon_box.pack_start(lbl_icon, True, True, 0)
+    setting_icon = SETTING_ICONS.get(icon_str or "")
+    if setting_icon:
+        icon = Gtk.Image.new_from_icon_name(setting_icon, Gtk.IconSize.BUTTON)
+        icon.get_style_context().add_class("setting-icon-image")
+        icon_box.pack_start(icon, True, True, 0)
+    else:
+        lbl_icon = Gtk.Label()
+        lbl_icon.set_markup(f"<span font='14'>{icon_str}</span>")
+        icon_box.pack_start(lbl_icon, True, True, 0)
     row_box.pack_start(icon_box, False, False, 0)
 
     # Title & Description

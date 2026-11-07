@@ -941,20 +941,25 @@ class Zapret2App(Gtk.Window):
 
         # App Brand Header
         brand_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        brand_box.set_margin_bottom(12)
-        brand_box.set_margin_start(10)
-        brand_box.set_margin_top(6)
+        brand_box.get_style_context().add_class("brand-box")
+        brand_box.set_margin_bottom(14)
+        brand_box.set_margin_start(12)
+        brand_box.set_margin_end(12)
+        brand_box.set_margin_top(14)
 
-        icon_lbl = Gtk.Label()
-        icon_lbl.set_markup("<span font='18'>🛡️</span>")
-        brand_box.pack_start(icon_lbl, False, False, 0)
+        icon_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        icon_box.get_style_context().add_class("brand-icon")
+        brand_img = Gtk.Image.new_from_icon_name("security-high-symbolic", Gtk.IconSize.DIALOG)
+        brand_img.get_style_context().add_class("brand-icon-image")
+        icon_box.pack_start(brand_img, True, True, 0)
+        brand_box.pack_start(icon_box, False, False, 0)
 
         title_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
-        brand_title = Gtk.Label()
-        brand_title.set_markup("<span font='13' weight='bold' color='#60cdff'>Zapret 2</span>")
+        brand_title = Gtk.Label(label="Zapret 2")
+        brand_title.get_style_context().add_class("brand-title")
         brand_title.set_xalign(0)
         brand_ver = Gtk.Label(label=APP_SUBTITLE)
-        brand_ver.get_style_context().add_class("page-subtitle")
+        brand_ver.get_style_context().add_class("brand-version")
         brand_ver.set_xalign(0)
         title_box.pack_start(brand_title, False, False, 0)
         title_box.pack_start(brand_ver, False, False, 0)
@@ -964,30 +969,30 @@ class Zapret2App(Gtk.Window):
         # Navigation items grouped like Windows Zapret 2 UI
         preset_cat = PresetCatalog.load_from_directory(os.path.join(APP_DIR, "zapret2", "presets", "winws2_builtin"))
         preset_nav_label = (
-            f"🧩 Пресеты Zapret 2 ({preset_cat.family_count} сем. · {preset_cat.total_count})"
-            if preset_cat.total_count else "🧩 Пресеты Zapret 2"
+            f"Пресеты Zapret 2 ({preset_cat.family_count} сем. · {preset_cat.total_count})"
+            if preset_cat.total_count else "Пресеты Zapret 2"
         )
         nav_structure = [
-            ("main", [("dashboard", "⚡ Управление Zapret 2")]),
+            ("main", [("dashboard", "view-grid-symbolic", "Управление Zapret 2")]),
             ("НАСТРОЙКИ ЗАПРЕТА", [
-                ("zapret2", preset_nav_label),
-                ("dpi_mode", "⚡ Режим DPI и скорость"),
-                ("presets", "📁 Профили (Legacy v1)"),
-                ("profiles", "▷ Параметры (Legacy v1)"),
+                ("zapret2", "folder-symbolic", preset_nav_label),
+                ("dpi_mode", "power-profile-balanced-symbolic", "Режим DPI и скорость"),
+                ("presets", "document-open-symbolic", "Профили (Legacy v1)"),
+                ("profiles", "view-list-symbolic", "Параметры (Legacy v1)"),
             ]),
             ("ИНСТРУМЕНТЫ", [
-                ("monitor", "📊 Монитор сети / Статус"),
-                ("dns", "📶 Настройки DNS"),
-                ("hosts", "📝 Редактор хостов"),
-                ("updates", "🔄 Обновления баз Zapret 2"),
+                ("monitor", "network-transmit-receive-symbolic", "Монитор сети / Статус"),
+                ("dns", "network-wireless-symbolic", "Настройки DNS"),
+                ("hosts", "text-editor-symbolic", "Редактор хостов"),
+                ("updates", "view-refresh-symbolic", "Обновления баз Zapret 2"),
             ]),
             ("ДИАГНОСТИКА", [
-                ("orchestra", "⚡ Автоподбор (Orchestra)"),
-                ("blockcheck", "🔍 BlockCheck & Диагностика"),
-                ("logs", "📜 Журнал работы"),
+                ("orchestra", "system-run-symbolic", "Автоподбор (Orchestra)"),
+                ("blockcheck", "edit-find-symbolic", "BlockCheck & Диагностика"),
+                ("logs", "utilities-terminal-symbolic", "Журнал работы"),
             ]),
             ("СИСТЕМА", [
-                ("settings", "⚙️ Настройки программы"),
+                ("settings", "preferences-system-symbolic", "Настройки программы"),
             ])
         ]
 
@@ -999,20 +1004,30 @@ class Zapret2App(Gtk.Window):
                 sec_lbl.set_xalign(0)
                 sidebar.pack_start(sec_lbl, False, False, 0)
 
-            for name, label in items:
-                btn = Gtk.ToggleButton(label=label)
+            for name, icon_name, label in items:
+                btn = Gtk.ToggleButton()
                 btn.get_style_context().add_class("fluent-nav-item")
-                if btn.get_child() and hasattr(btn.get_child(), "set_xalign"):
-                    btn.get_child().set_xalign(0)
+                nav_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+                nav_icon = Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.MENU)
+                nav_icon.get_style_context().add_class("nav-icon")
+                nav_lbl = Gtk.Label(label=label, xalign=0)
+                nav_row.pack_start(nav_icon, False, False, 0)
+                nav_row.pack_start(nav_lbl, True, True, 0)
+                btn.add(nav_row)
                 btn.connect("toggled", self.on_nav_toggled, name)
                 sidebar.pack_start(btn, False, False, 0)
                 self.nav_buttons[name] = btn
 
         # Bottom exit button
-        btn_exit = Gtk.Button(label="🚪 Закрыть Zapret GUI")
+        btn_exit = Gtk.Button()
         btn_exit.get_style_context().add_class("fluent-nav-item")
-        if btn_exit.get_child() and hasattr(btn_exit.get_child(), "set_xalign"):
-            btn_exit.get_child().set_xalign(0)
+        exit_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        exit_icon = Gtk.Image.new_from_icon_name("application-exit-symbolic", Gtk.IconSize.MENU)
+        exit_icon.get_style_context().add_class("nav-icon")
+        exit_lbl = Gtk.Label(label="Закрыть Zapret GUI", xalign=0)
+        exit_row.pack_start(exit_icon, False, False, 0)
+        exit_row.pack_start(exit_lbl, True, True, 0)
+        btn_exit.add(exit_row)
         btn_exit.connect("clicked", lambda _: self.quit_app(None))
         btn_exit.set_margin_top(12)
         sidebar.pack_end(btn_exit, False, False, 6)
@@ -1061,7 +1076,7 @@ class Zapret2App(Gtk.Window):
         # Tile 1: Preset
         t1 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         t1.get_style_context().add_class("metric-tile")
-        l1 = Gtk.Label(label="📁 ТЕКУЩИЙ PRESET", xalign=0)
+        l1 = Gtk.Label(label="ТЕКУЩИЙ PRESET", xalign=0)
         l1.get_style_context().add_class("metric-tile-label")
         safe_preset_info = PRESETS.get(self.active_preset, PRESETS.get("general", {"title": "General"}))
         initial_preset = os.path.splitext(os.path.basename(self.zapret2_preset))[0] if self.engine_mode == "nfqws2" else safe_preset_info["title"].split("(")[0].strip()
@@ -1074,7 +1089,7 @@ class Zapret2App(Gtk.Window):
         # Tile 2: DPI Mode
         t2 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         t2.get_style_context().add_class("metric-tile")
-        l2 = Gtk.Label(label="⚡ ТЕКУЩИЙ РЕЖИМ", xalign=0)
+        l2 = Gtk.Label(label="ТЕКУЩИЙ РЕЖИМ", xalign=0)
         l2.get_style_context().add_class("metric-tile-label")
         mode_str = {"tpws": "TPWS (SOCKS5 1080)", "nfqws2": "NFQWS2 + Lua"}.get(self.engine_mode, "NFQWS v1")
         self.top_tile_mode = Gtk.Label(label=mode_str, xalign=0)
@@ -1086,7 +1101,7 @@ class Zapret2App(Gtk.Window):
         # Tile 3: DNS
         t3 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         t3.get_style_context().add_class("metric-tile")
-        l3 = Gtk.Label(label="🌐 DNS РЕЗОЛВЕР", xalign=0)
+        l3 = Gtk.Label(label="DNS РЕЗОЛВЕР", xalign=0)
         l3.get_style_context().add_class("metric-tile-label")
         safe_dns_info = DNS_SERVERS.get(self.active_dns, DNS_SERVERS.get("cloudflare", {"title": "Cloudflare"}))
         self.top_tile_dns = Gtk.Label(label=safe_dns_info["title"].split("(")[0].strip(), xalign=0)
@@ -1098,7 +1113,7 @@ class Zapret2App(Gtk.Window):
         # Tile 4: Bases
         t4 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         t4.get_style_context().add_class("metric-tile")
-        l4 = Gtk.Label(label="🔄 БАЗЫ ZAPRET 2", xalign=0)
+        l4 = Gtk.Label(label="БАЗЫ ZAPRET 2", xalign=0)
         l4.get_style_context().add_class("metric-tile-label")
         self.top_tile_ver = Gtk.Label(label=f"v{meta.get('version', __version__)}", xalign=0)
         self.top_tile_ver.get_style_context().add_class("metric-tile-val")
@@ -1150,22 +1165,22 @@ class Zapret2App(Gtk.Window):
         qa_card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         qa_card.get_style_context().add_class("fluent-card")
 
-        btn_restart = Gtk.Button(label="🔄 Перезапустить обход")
+        btn_restart = Gtk.Button(label="Перезапустить обход")
         btn_restart.get_style_context().add_class("fluent-btn-secondary")
         btn_restart.connect("clicked", lambda _: self.restart_engine())
         qa_card.pack_start(btn_restart, False, False, 0)
 
-        btn_sync = Gtk.Button(label="⚡ Синхронизировать базы")
+        btn_sync = Gtk.Button(label="Синхронизировать базы")
         btn_sync.get_style_context().add_class("fluent-btn-secondary")
         btn_sync.connect("clicked", lambda _: self.switch_to_tab("updates"))
         qa_card.pack_start(btn_sync, False, False, 0)
 
-        btn_test = Gtk.Button(label="🔍 Быстрый тест доступности")
+        btn_test = Gtk.Button(label="Быстрый тест доступности")
         btn_test.get_style_context().add_class("fluent-btn-secondary")
         btn_test.connect("clicked", lambda _: self.switch_to_tab("blockcheck"))
         qa_card.pack_start(btn_test, False, False, 0)
 
-        btn_logs = Gtk.Button(label="📜 Журнал работы")
+        btn_logs = Gtk.Button(label="Журнал работы")
         btn_logs.get_style_context().add_class("fluent-btn-secondary")
         btn_logs.connect("clicked", lambda _: self.switch_to_tab("logs"))
         qa_card.pack_start(btn_logs, False, False, 0)
@@ -1174,7 +1189,7 @@ class Zapret2App(Gtk.Window):
 
         # Settings Rows Section (matching Windows Zapret 2 UI settings)
         sec_header = Gtk.Label(label="Быстрые параметры программы", xalign=0)
-        sec_header.get_style_context().add_class("nav-section-title")
+        sec_header.get_style_context().add_class("section-title")
         sec_header.set_margin_top(8)
         sec_header.set_margin_bottom(6)
         vbox.pack_start(sec_header, False, False, 0)
@@ -1332,7 +1347,7 @@ class Zapret2App(Gtk.Window):
         vbox.pack_start(h_card, False, False, 0)
 
         # Apply Preset Button
-        btn_apply = Gtk.Button(label="💾 Применить выбранный пресет")
+        btn_apply = Gtk.Button(label="Применить выбранный пресет")
         btn_apply.get_style_context().add_class("fluent-btn-primary")
         btn_apply.connect("clicked", lambda _: self.restart_engine())
         vbox.pack_start(btn_apply, False, False, 8)
@@ -1365,11 +1380,11 @@ class Zapret2App(Gtk.Window):
         )
 
         profiles = [
-            ("youtube", "🎬 YouTube (TCP 443, 80)", "fake,multidisorder + ts fooling", "Обход замедления веб-интерфейса и видеосерверов googlevideo", self.enable_youtube),
-            ("discord_tcp", "💬 Discord (TCP 443)", "fake,multidisorder + ts fooling", "Обход блокировки API, авторизации и шлюза Discord", self.enable_discord_tcp),
-            ("discord_voice", "🎙️ Discord Voice / STUN", "UDP 19294-19344, 50000-50100 (fake discord, stun)", "Разблокировка голосовых каналов и звонков в Discord", self.enable_discord_voice),
-            ("quic", "⚡ YouTube QUIC / HTTP/3", "UDP 443 (fake-quic google)", "Ускорение буферизации видео через протокол QUIC", self.enable_quic),
-            ("general_https", "🌐 Общий HTTPS трафик", "Порты 443, 2053, 2083, 2087, 8443", "Разблокировка всех остальных веб-сайтов под цензурой", self.enable_general_https)
+            ("youtube", "YouTube (TCP 443, 80)", "fake,multidisorder + ts fooling", "Обход замедления веб-интерфейса и видеосерверов googlevideo", self.enable_youtube),
+            ("discord_tcp", "Discord (TCP 443)", "fake,multidisorder + ts fooling", "Обход блокировки API, авторизации и шлюза Discord", self.enable_discord_tcp),
+            ("discord_voice", "Discord Voice / STUN", "UDP 19294-19344, 50000-50100 (fake discord, stun)", "Разблокировка голосовых каналов и звонков в Discord", self.enable_discord_voice),
+            ("quic", "YouTube QUIC / HTTP/3", "UDP 443 (fake-quic google)", "Ускорение буферизации видео через протокол QUIC", self.enable_quic),
+            ("general_https", "Общий HTTPS трафик", "Порты 443, 2053, 2083, 2087, 8443", "Разблокировка всех остальных веб-сайтов под цензурой", self.enable_general_https)
         ]
 
         self.profile_switches = {}
@@ -1411,7 +1426,7 @@ class Zapret2App(Gtk.Window):
             card.pack_end(sw, False, False, 0)
             vbox.pack_start(card, False, False, 0)
 
-        btn_apply = Gtk.Button(label="💾 Применить параметры профилей")
+        btn_apply = Gtk.Button(label="Применить параметры профилей")
         btn_apply.get_style_context().add_class("fluent-btn-primary")
         btn_apply.connect("clicked", lambda _: self.restart_engine() if self.is_running else None)
         vbox.pack_start(btn_apply, False, False, 8)
@@ -1523,7 +1538,7 @@ class Zapret2App(Gtk.Window):
         vbox.pack_start(c3, False, False, 0)
 
         # Action: Re-apply tuning
-        btn_tune = Gtk.Button(label="⚡ Применить оптимизации ядра Linux")
+        btn_tune = Gtk.Button(label="Применить оптимизации ядра Linux")
         btn_tune.get_style_context().add_class("fluent-btn-primary")
         btn_tune.connect("clicked", lambda _: self.apply_network_tune())
         vbox.pack_start(btn_tune, False, False, 8)
@@ -1613,7 +1628,7 @@ class Zapret2App(Gtk.Window):
 
         h_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         h_box.pack_start(Gtk.Label(label="<b>Задержка до ключевых серверов (Latency)</b>", use_markup=True, xalign=0), True, True, 0)
-        btn_refresh_ping = Gtk.Button(label="🔄 Измерить задержку")
+        btn_refresh_ping = Gtk.Button(label="Измерить задержку")
         btn_refresh_ping.get_style_context().add_class("fluent-btn-secondary")
         btn_refresh_ping.connect("clicked", lambda _: self.refresh_network_monitor())
         h_box.pack_end(btn_refresh_ping, False, False, 0)
@@ -1747,17 +1762,17 @@ class Zapret2App(Gtk.Window):
         # Action Buttons Bar
         btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
 
-        self.btn_probe_dns = Gtk.Button(label="⚡ Замерить задержки")
+        self.btn_probe_dns = Gtk.Button(label="Замерить задержки")
         self.btn_probe_dns.get_style_context().add_class("fluent-btn-primary")
         self.btn_probe_dns.connect("clicked", self.on_probe_dns_clicked)
         btn_box.pack_start(self.btn_probe_dns, False, False, 0)
 
-        self.btn_apply_dns = Gtk.Button(label="💾 Применить DNS")
+        self.btn_apply_dns = Gtk.Button(label="Применить DNS")
         self.btn_apply_dns.get_style_context().add_class("fluent-btn-secondary")
         self.btn_apply_dns.connect("clicked", self.on_apply_dns_clicked)
         btn_box.pack_start(self.btn_apply_dns, False, False, 0)
 
-        self.btn_test_dns = Gtk.Button(label="🔍 Проверить DoT резолвинг")
+        self.btn_test_dns = Gtk.Button(label="Проверить DoT резолвинг")
         self.btn_test_dns.get_style_context().add_class("fluent-btn-secondary")
         self.btn_test_dns.connect("clicked", self.on_test_dns)
         btn_box.pack_start(self.btn_test_dns, False, False, 0)
@@ -1769,14 +1784,9 @@ class Zapret2App(Gtk.Window):
 
         vbox.pack_start(btn_box, False, False, 4)
 
-        # Scrolled container for DNS provider cards
-        scroller = Gtk.ScrolledWindow()
-        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scroller.set_min_content_height(380)
-
+        # Provider cards. The page itself scrolls, so no nested scrollbar is needed.
         self.dns_cards_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        scroller.add(self.dns_cards_box)
-        vbox.pack_start(scroller, True, True, 4)
+        vbox.pack_start(self.dns_cards_box, False, False, 4)
 
         self.dns_radios = {}
         self.dns_cards = {}
@@ -1866,7 +1876,7 @@ class Zapret2App(Gtk.Window):
     def _on_probe_dns_completed(self, results):
         if hasattr(self, "btn_probe_dns"):
             self.btn_probe_dns.set_sensitive(True)
-            self.btn_probe_dns.set_label("⚡ Замерить задержки")
+            self.btn_probe_dns.set_label("Замерить задержки")
 
         self.dns_rtt_values.update(results)
 
@@ -2012,7 +2022,7 @@ class Zapret2App(Gtk.Window):
         self.combo_file.connect("changed", self.on_hosts_file_changed)
         file_sel_card.pack_start(self.combo_file, True, True, 0)
 
-        btn_reload = Gtk.Button(label="🔄 Загрузить")
+        btn_reload = Gtk.Button(label="Загрузить")
         btn_reload.get_style_context().add_class("fluent-btn-secondary")
         btn_reload.connect("clicked", lambda _: self.load_hosts_file_content())
         file_sel_card.pack_end(btn_reload, False, False, 0)
@@ -2033,27 +2043,27 @@ class Zapret2App(Gtk.Window):
 
         # Actions
         btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        btn_save = Gtk.Button(label="💾 Сохранить файл")
+        btn_save = Gtk.Button(label="Сохранить файл")
         btn_save.get_style_context().add_class("fluent-btn-primary")
         btn_save.connect("clicked", lambda _: self.save_hosts_file_content())
         btn_box.pack_start(btn_save, False, False, 0)
 
-        btn_compile = Gtk.Button(label="⚡ Проверить компиляцию (!домен)")
+        btn_compile = Gtk.Button(label="Проверить компиляцию (!домен)")
         btn_compile.get_style_context().add_class("fluent-btn-secondary")
         btn_compile.connect("clicked", self.on_compile_lists_clicked)
         btn_box.pack_start(btn_compile, False, False, 0)
 
-        btn_apply_hosts = Gtk.Button(label="🚀 Применить базу в /etc/hosts")
+        btn_apply_hosts = Gtk.Button(label="Применить базу в /etc/hosts")
         btn_apply_hosts.get_style_context().add_class("fluent-btn-secondary")
         btn_apply_hosts.connect("clicked", lambda _: self.apply_hosts_now())
         btn_box.pack_start(btn_apply_hosts, False, False, 0)
 
-        btn_clean_hosts = Gtk.Button(label="🧹 Очистить записи Zapret")
+        btn_clean_hosts = Gtk.Button(label="Очистить записи Zapret")
         btn_clean_hosts.get_style_context().add_class("fluent-btn-secondary")
         btn_clean_hosts.connect("clicked", lambda _: self.clean_hosts_now())
         btn_box.pack_start(btn_clean_hosts, False, False, 0)
 
-        self.btn_ip2net = Gtk.Button(label="🌐 Собрать IP-подсети (mdig + ip2net)")
+        self.btn_ip2net = Gtk.Button(label="Собрать IP-подсети (mdig + ip2net)")
         self.btn_ip2net.get_style_context().add_class("fluent-btn-secondary")
         self.btn_ip2net.connect("clicked", self.on_build_ipset_clicked)
         btn_box.pack_start(self.btn_ip2net, False, False, 0)
@@ -2146,7 +2156,7 @@ class Zapret2App(Gtk.Window):
 
             def finish():
                 self.btn_ip2net.set_sensitive(True)
-                self.btn_ip2net.set_label("🌐 Собрать IP-подсети (mdig + ip2net)")
+                self.btn_ip2net.set_label("Собрать IP-подсети (mdig + ip2net)")
                 if res.returncode == 0:
                     self.show_dialog("Сбор подсетей завершен", f"Подсети успешно сгенерированы и сохранены в /etc/zapret/ipset-general.txt!\n\n{out}")
                 else:
@@ -2198,12 +2208,12 @@ class Zapret2App(Gtk.Window):
         card_status.pack_start(b_info, True, True, 0)
 
         b_acts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        self.btn_check_upd = Gtk.Button(label="🔍 Проверить релиз")
+        self.btn_check_upd = Gtk.Button(label="Проверить релиз")
         self.btn_check_upd.get_style_context().add_class("fluent-btn-secondary")
         self.btn_check_upd.connect("clicked", lambda _: self.on_check_updates())
         b_acts.pack_start(self.btn_check_upd, False, False, 0)
 
-        self.btn_sync_now = Gtk.Button(label="⚡ Синхронизировать базы")
+        self.btn_sync_now = Gtk.Button(label="Синхронизировать базы")
         self.btn_sync_now.get_style_context().add_class("fluent-btn-primary")
         self.btn_sync_now.connect("clicked", lambda _: self.on_start_sync())
         b_acts.pack_start(self.btn_sync_now, False, False, 0)
@@ -2363,12 +2373,12 @@ class Zapret2App(Gtk.Window):
         h_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         h_box.pack_start(Gtk.Label(label="<b>Экспресс-проверка доступности ресурсов</b>", use_markup=True, xalign=0), True, True, 0)
 
-        self.btn_auto_preset = Gtk.Button(label="⚡ Автоподбор лучшего пресета")
+        self.btn_auto_preset = Gtk.Button(label="Автоподбор лучшего пресета")
         self.btn_auto_preset.get_style_context().add_class("fluent-btn-secondary")
         self.btn_auto_preset.connect("clicked", self.on_auto_preset_clicked)
         h_box.pack_end(self.btn_auto_preset, False, False, 0)
 
-        self.btn_run_check = Gtk.Button(label="🚀 Запустить диагностику")
+        self.btn_run_check = Gtk.Button(label="Запустить диагностику")
         self.btn_run_check.get_style_context().add_class("fluent-btn-primary")
         self.btn_run_check.connect("clicked", self.on_run_blockcheck)
         h_box.pack_end(self.btn_run_check, False, False, 0)
@@ -2701,7 +2711,7 @@ class Zapret2App(Gtk.Window):
             def finish():
                 self.btn_auto_preset.set_sensitive(True)
                 self.btn_run_check.set_sensitive(True)
-                self.btn_auto_preset.set_label("⚡ Автоподбор лучшего пресета")
+                self.btn_auto_preset.set_label("Автоподбор лучшего пресета")
 
                 if best_id:
                     winner_applied(best_id)
@@ -2845,7 +2855,7 @@ class Zapret2App(Gtk.Window):
         self.lbl_log_file = Gtk.Label(label=f"<b>Лог {html.escape(str(log_path_display))}:</b>", use_markup=True, xalign=0)
         h_box.pack_start(self.lbl_log_file, True, True, 0)
 
-        self.btn_refresh_log = Gtk.Button(label="🔄 Обновить лог")
+        self.btn_refresh_log = Gtk.Button(label="Обновить лог")
         self.btn_refresh_log.get_style_context().add_class("fluent-btn-secondary")
         self.btn_refresh_log.connect("clicked", lambda _: self.read_log_file())
         h_box.pack_end(self.btn_refresh_log, False, False, 0)
@@ -2864,12 +2874,12 @@ class Zapret2App(Gtk.Window):
         actions_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         actions_box.set_margin_top(4)
 
-        self.btn_analyze_log = Gtk.Button(label="🔍 Анализировать журнал")
+        self.btn_analyze_log = Gtk.Button(label="Анализировать журнал")
         self.btn_analyze_log.get_style_context().add_class("fluent-btn-primary")
         self.btn_analyze_log.connect("clicked", self.on_analyze_log_clicked)
         actions_box.pack_start(self.btn_analyze_log, False, False, 0)
 
-        self.btn_support_bundle = Gtk.Button(label="📦 Собрать support bundle")
+        self.btn_support_bundle = Gtk.Button(label="Собрать support bundle")
         self.btn_support_bundle.get_style_context().add_class("fluent-btn-secondary")
         self.btn_support_bundle.connect("clicked", self.on_support_bundle_clicked)
         actions_box.pack_start(self.btn_support_bundle, False, False, 0)
@@ -3013,7 +3023,7 @@ class Zapret2App(Gtk.Window):
                 row.pack_start(desc_lbl, False, False, 0)
 
                 rec_lbl = Gtk.Label(
-                    label=f"💡 <b>Рекомендация:</b> {html.escape(incident.recommendation)}",
+                    label=f"<b>Рекомендация:</b> {html.escape(incident.recommendation)}",
                     use_markup=True,
                     xalign=0
                 )
@@ -3153,7 +3163,7 @@ class Zapret2App(Gtk.Window):
         p_info.pack_start(Gtk.Label(label="Устанавливает правило в /etc/sudoers.d/ и policykit для мгновенного запуска без окон пароля", xalign=0), False, False, 0)
         card_polkit.pack_start(p_info, True, True, 0)
 
-        btn_polkit = Gtk.Button(label="🛡️ Установить права")
+        btn_polkit = Gtk.Button(label="Установить права")
         btn_polkit.get_style_context().add_class("fluent-btn-secondary")
         btn_polkit.connect("clicked", lambda _: self.install_polkit_action())
         btn_polkit.set_valign(Gtk.Align.CENTER)
@@ -3164,7 +3174,7 @@ class Zapret2App(Gtk.Window):
         card_healer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         card_healer.get_style_context().add_class("fluent-card")
         h_info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        h_info.pack_start(Gtk.Label(label="<b>🩹 Auto-Healing Daemon</b>", use_markup=True, xalign=0), False, False, 0)
+        h_info.pack_start(Gtk.Label(label="<b>Auto-Healing Daemon</b>", use_markup=True, xalign=0), False, False, 0)
         h_info.pack_start(Gtk.Label(label="Автоматически проверяет доступность сервисов и перезапускает обход при сбоях", xalign=0), False, False, 0)
         card_healer.pack_start(h_info, True, True, 0)
 
@@ -3210,9 +3220,9 @@ class Zapret2App(Gtk.Window):
         card_theme.pack_start(th_info, True, True, 0)
 
         self.combo_theme = Gtk.ComboBoxText()
-        self.combo_theme.append("dark", "🌙 Тёмная тема")
-        self.combo_theme.append("light", "☀️ Светлая тема")
-        self.combo_theme.append("system", "💻 Системная")
+        self.combo_theme.append("dark", "Тёмная тема")
+        self.combo_theme.append("light", "Светлая тема")
+        self.combo_theme.append("system", "Системная")
         current_th = getattr(self, "theme", "dark")
         self.combo_theme.set_active_id(current_th if current_th in ("dark", "light", "system") else "dark")
         self.combo_theme.connect("changed", self.on_theme_changed)
@@ -3228,7 +3238,7 @@ class Zapret2App(Gtk.Window):
         o_info.pack_start(Gtk.Label(label="Повторно запустить тур первого запуска: обзор nfqws2, пресетов и трея", xalign=0), False, False, 0)
         card_onboarding.pack_start(o_info, True, True, 0)
 
-        btn_onboarding = Gtk.Button(label="⚙️ Пройти обучение заново")
+        btn_onboarding = Gtk.Button(label="Пройти обучение заново")
         btn_onboarding.get_style_context().add_class("fluent-btn-secondary")
         btn_onboarding.connect("clicked", lambda _: self.replay_onboarding())
         btn_onboarding.set_valign(Gtk.Align.CENTER)
@@ -3240,7 +3250,7 @@ class Zapret2App(Gtk.Window):
         about_card.get_style_context().add_class("fluent-card")
         about_card.pack_start(Gtk.Label(label="<b>О программе</b>", use_markup=True, xalign=0), False, False, 0)
         about_card.pack_start(Gtk.Label(label=APP_DESCRIPTION, xalign=0), False, False, 0)
-        mode_text = "🛡️ Системный режим (/usr)" if getattr(self, "is_system_mode", False) else "📦 Портативный режим (запуск из каталога пользователя)"
+        mode_text = "Системный режим (/usr)" if getattr(self, "is_system_mode", False) else "Портативный режим (запуск из каталога пользователя)"
         about_card.pack_start(Gtk.Label(label=f"Режим установки: {mode_text}", xalign=0), False, False, 0)
         about_card.pack_start(Gtk.Label(label="Ядра: nfqws2 + Lua, nfqws / tpws v72.13; брандмауэр: nftables", xalign=0), False, False, 0)
         about_card.pack_start(Gtk.Label(label="Синхронизация списков: Forgejo git2.zapret.moe (Zapret 2 Community)", xalign=0), False, False, 0)

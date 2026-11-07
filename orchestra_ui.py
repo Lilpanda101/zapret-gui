@@ -602,12 +602,12 @@ class OrchestraWidget(Gtk.Box):
         self.lbl_net_notice.set_hexpand(True)
         self.network_banner_box.pack_start(self.lbl_net_notice, True, True, 0)
 
-        btn_net_quick = Gtk.Button(label="⚡ Быстрый автоподбор")
+        btn_net_quick = Gtk.Button(label="Быстрый автоподбор")
         btn_net_quick.get_style_context().add_class("fluent-btn-primary")
         btn_net_quick.connect("clicked", lambda _: self._on_net_banner_quick())
         self.network_banner_box.pack_start(btn_net_quick, False, False, 0)
 
-        btn_net_clear = Gtk.Button(label="🗑 Сбросить кэш")
+        btn_net_clear = Gtk.Button(label="Сбросить кэш")
         btn_net_clear.get_style_context().add_class("fluent-btn-secondary")
         btn_net_clear.connect("clicked", lambda _: self._on_net_banner_clear())
         self.network_banner_box.pack_start(btn_net_clear, False, False, 0)
@@ -629,13 +629,13 @@ class OrchestraWidget(Gtk.Box):
         self.btn_run.connect("clicked", lambda _: self.start_quick_autotune())
         controls_card.pack_start(self.btn_run, False, False, 0)
 
-        self.btn_quick = Gtk.Button(label="⚡ Быстрый (Top-10)")
+        self.btn_quick = Gtk.Button(label="Быстрый (Top-10)")
         self.btn_quick.get_style_context().add_class("fluent-btn-secondary")
         self.btn_quick.set_tooltip_text("Быстрый подбор среди 10 лучших проверенных пресетов")
         self.btn_quick.connect("clicked", lambda _: self.start_quick_autotune())
         controls_card.pack_start(self.btn_quick, False, False, 0)
 
-        self.btn_full = Gtk.Button(label="🔍 Полный каталог")
+        self.btn_full = Gtk.Button(label="Полный каталог")
         self.btn_full.get_style_context().add_class("fluent-btn-secondary")
         self.btn_full.set_tooltip_text("Полный перебор всех пресетов каталога")
         self.btn_full.connect("clicked", lambda _: self.start_full_autotune())
@@ -658,13 +658,13 @@ class OrchestraWidget(Gtk.Box):
         spacer.set_hexpand(True)
         controls_card.pack_start(spacer, True, True, 0)
 
-        self.btn_apply_winner = Gtk.Button(label="🏆 Применить победителя")
+        self.btn_apply_winner = Gtk.Button(label="Применить победителя")
         self.btn_apply_winner.get_style_context().add_class("fluent-btn-primary")
         self.btn_apply_winner.set_sensitive(False)
         self.btn_apply_winner.connect("clicked", lambda _: self.apply_winner())
         controls_card.pack_start(self.btn_apply_winner, False, False, 0)
 
-        self.btn_clear_cache = Gtk.Button(label="🗑 Сбросить кэш")
+        self.btn_clear_cache = Gtk.Button(label="Сбросить кэш")
         self.btn_clear_cache.get_style_context().add_class("fluent-btn-secondary")
         self.btn_clear_cache.set_tooltip_text("Очистить историю и кэш предыдущих автоподборов")
         self.btn_clear_cache.connect("clicked", lambda _: self.reset_cache())
@@ -761,7 +761,7 @@ class OrchestraWidget(Gtk.Box):
         """Updates and displays the network change notification banner."""
         summary = new_conn.summary()
         self.lbl_net_notice.set_markup(
-            f"🔔 <b>Обнаружена смена сети:</b> {GLib.markup_escape_text(summary)}. "
+            f"<b>Обнаружена смена сети:</b> {GLib.markup_escape_text(summary)}. "
             "Для максимальной скорости и стабильности рекомендуется запустить повторный автоподбор пресетов."
         )
         self.network_banner_box.set_visible(True)
@@ -889,7 +889,7 @@ class OrchestraWidget(Gtk.Box):
 
             is_best = (best is not None and preset_result.preset_id == best.preset_id and best.ok_count > 0)
             if is_best:
-                verdict = "🏆 Лидер"
+                verdict = "Лидер"
             elif preset_result.ok_count > 0:
                 verdict = "✓ Работает"
             elif preset_result.error:
@@ -972,13 +972,13 @@ class OrchestraWidget(Gtk.Box):
 
         if result.winner:
             self.btn_apply_winner.set_sensitive(True)
-            self.btn_apply_winner.set_label(f"🏆 Применить: {result.winner}")
+            self.btn_apply_winner.set_label(f"Применить: {result.winner}")
             self.lbl_status.set_markup(f"<span color='#2e7d32'><b>Автоподбор завершён! Победитель: {result.winner}</b></span>")
             self.lbl_winner.set_text(f"Победитель: {result.winner} ({result.best.ok_count}/{result.best.total_targets})")
             # Update row in ListStore for winner
             for row in self.list_store:
                 if row[7] == result.winner:
-                    row[6] = "🏆 Победитель"
+                    row[6] = "Победитель"
         elif result.stopped:
             self.btn_apply_winner.set_sensitive(False)
             self.lbl_status.set_markup("<span color='#f57c00'><b>Автоподбор остановлен пользователем</b></span>")
@@ -1029,7 +1029,7 @@ class OrchestraWidget(Gtk.Box):
         self.lbl_current_preset.set_text("Текущий пресет: —")
         self.lbl_winner.set_text("Лидер: —")
         self.btn_apply_winner.set_sensitive(False)
-        self.btn_apply_winner.set_label("🏆 Применить победителя")
+        self.btn_apply_winner.set_label("Применить победителя")
 
 
 # ============================================================================
@@ -1060,6 +1060,11 @@ def create_orchestra_page(app: Optional[Any] = None, **kwargs: Any) -> Tuple[Gtk
     Returns (scrolled_window, orchestra_widget).
     """
     widget = OrchestraWidget(app=app, **kwargs)
+    widget.set_margin_top(30)
+    widget.set_margin_bottom(28)
+    widget.set_margin_start(32)
+    widget.set_margin_end(32)
+
     scrolled = Gtk.ScrolledWindow()
     scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
     scrolled.add(widget)
