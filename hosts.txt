@@ -3,11 +3,9 @@
 # ==============================================================
 # 1. SMART PROXY: AI, Geoblocked Services & Spotify Web Player
 # ==============================================================
-5.175.161.3 generativelanguage.googleapis.com
-5.175.161.3 aicode.googleapis.com
-5.175.161.3 aiplatform.googleapis.com
-5.175.161.3 gemini.google.com
-5.175.161.3 alkalimakersuite-pa.clients6.google.com
+5.175.161.40 generativelanguage.googleapis.com
+5.175.161.40 aicode.googleapis.com
+5.175.161.40 gemini.google.com
 
 
 

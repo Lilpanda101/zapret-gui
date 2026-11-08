@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import pwd
 from pathlib import Path
@@ -36,6 +37,9 @@ def _calling_user_home() -> Path:
 
 
 USER_PRESETS = _calling_user_home() / ".config" / "zapret-gui" / "presets"
+
+logger = logging.getLogger("zapret_gui.zapret2_core")
+BUILTIN_VERSION_HEADER_PREFIX = "# BuiltinVersion:"
 FAKE_DIR = APP_DIR / "fake"
 LISTS_DIR = APP_DIR / "lists"
 NFQWS2 = Path("/usr/bin/nfqws2")
@@ -283,6 +287,34 @@ def clear_auto_hostlist(path: Path | None = None) -> bool:
         return False
 
 
+def _find_preset_by_filename(filename: str, app_dir: Path = APP_DIR) -> Path | None:
+    """Повторный поиск пресета по имени файла (регистр букв не важен).
+
+    Нужен, когда файл выбранного пресета пропал между получением пути и
+    чтением: пользовательская копия могла уйти в replaced при обновлении
+    встроенного пресета, и пресет теперь находится по встроенному пути или
+    записан на диске в другом регистре. Находится только тот же пресет по
+    имени файла, другой пресет не подставляется никогда.
+    """
+    for directory in (USER_PRESETS, app_dir / "zapret2" / "presets" / "winws2_builtin"):
+        if not directory.is_dir():
+            continue
+        for path in directory.glob("*.txt"):
+            if path.name.casefold() == filename.casefold() and path.is_file():
+                return path
+    return None
+
+
+def re_resolve_preset_path(path: Path, app_dir: Path = APP_DIR) -> Path:
+    """Если ранее полученный путь к выбранному пресету пропал, ищет его заново один раз по имени файла."""
+    if path.is_file():
+        return path
+    found = _find_preset_by_filename(path.name, app_dir)
+    if found is not None:
+        return found
+    raise PresetError(f"Пресет не найден: {path.stem}")
+
+
 def preset_path(preset_id: str, app_dir: Path = APP_DIR) -> Path:
     filename = normalize_preset_id(preset_id)
     user_path = USER_PRESETS / filename
@@ -291,14 +323,23 @@ def preset_path(preset_id: str, app_dir: Path = APP_DIR) -> Path:
     builtin = app_dir / "zapret2" / "presets" / "winws2_builtin" / filename
     if builtin.is_file():
         return builtin
+    found = _find_preset_by_filename(filename, app_dir)
+    if found is not None:
+        return found
     raise PresetError(f"Пресет не найден: {Path(filename).stem}")
 
 
 def load_preset(preset_id: str, app_dir: Path = APP_DIR) -> str:
     path = preset_path(preset_id, app_dir)
-    if path.stat().st_size > MAX_PRESET_SIZE:
-        raise PresetError("Пресет больше 4 МиБ")
-    return path.read_text(encoding="utf-8-sig")
+    try:
+        if path.stat().st_size > MAX_PRESET_SIZE:
+            raise PresetError("Пресет больше 4 МиБ")
+        return path.read_text(encoding="utf-8-sig")
+    except FileNotFoundError:
+        path = re_resolve_preset_path(path, app_dir)
+        if path.stat().st_size > MAX_PRESET_SIZE:
+            raise PresetError("Пресет больше 4 МиБ")
+        return path.read_text(encoding="utf-8-sig")
 
 
 def discover_presets(app_dir: Path = APP_DIR) -> list[dict]:
@@ -369,6 +410,82 @@ def reset_user_preset(preset_id: str) -> None:
     path = USER_PRESETS / normalize_preset_id(preset_id)
     if path.exists():
         path.unlink()
+
+
+def builtin_preset_version(text: str) -> tuple[int, ...] | None:
+    """Номер версии из шапки пресета ('# BuiltinVersion: 2.44' дает (2, 44)); None, если номера нет."""
+    for raw in str(text or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if not line.startswith("#"):
+            return None
+        if not line.startswith(BUILTIN_VERSION_HEADER_PREFIX):
+            continue
+        parts = line[len(BUILTIN_VERSION_HEADER_PREFIX):].strip().split(".")
+        try:
+            return tuple(int(part) for part in parts)
+        except ValueError:
+            return None
+    return None
+
+
+def _version_text(version: tuple[int, ...] | None) -> str:
+    return ".".join(str(part) for part in version) if version else ""
+
+
+@dataclass
+class BuiltinOverrideRefreshResult:
+    refreshed: list[tuple[str, str, str]] = field(default_factory=list)
+    failed: list[tuple[str, str]] = field(default_factory=list)
+
+
+def replaced_presets_dir() -> Path:
+    """Каталог прежних копий внутри пользовательского каталога пресетов: presets/replaced."""
+    return USER_PRESETS / "replaced"
+
+
+def refresh_outdated_builtin_overrides(app_dir: Path = APP_DIR) -> BuiltinOverrideRefreshResult:
+    """Заменяет пользовательские копии встроенных пресетов, отставшие по BuiltinVersion.
+
+    Если у встроенного пресета номер '# BuiltinVersion:' больше, чем в копии
+    пользователя (или в копии номера нет), копия заменяется встроенным тем же
+    действием, что ручной сброс к встроенному: прежняя копия сохраняется в
+    presets/replaced внутри пользовательского каталога пресетов, сама копия
+    удаляется, и дальше работает встроенный пресет. Каждая замена пишется в
+    лог. Пресеты пользователя с другими именами файлов не трогаются.
+    """
+    result = BuiltinOverrideRefreshResult()
+    builtin_dir = app_dir / "zapret2" / "presets" / "winws2_builtin"
+    if not builtin_dir.is_dir() or not USER_PRESETS.is_dir():
+        return result
+    for builtin_path in sorted(builtin_dir.glob("*.txt"), key=lambda p: p.name.casefold()):
+        user_path = USER_PRESETS / builtin_path.name
+        if not user_path.is_file():
+            continue
+        try:
+            builtin_version = builtin_preset_version(builtin_path.read_text(encoding="utf-8-sig"))
+            if builtin_version is None:
+                continue
+            user_version = builtin_preset_version(user_path.read_text(encoding="utf-8-sig"))
+            if user_version is not None and user_version >= builtin_version:
+                continue
+            backup_dir = replaced_presets_dir()
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            (backup_dir / builtin_path.name).write_bytes(user_path.read_bytes())
+            user_path.unlink()
+        except OSError as exc:
+            result.failed.append((builtin_path.name, str(exc)))
+            logger.warning("Пресет '%s' не удалось заменить встроенным: %s", builtin_path.name, exc)
+            continue
+        result.refreshed.append((builtin_path.name, _version_text(user_version), _version_text(builtin_version)))
+        logger.info(
+            "Пресет '%s' заменён встроенным версии %s (у вашей копии была %s); прежняя копия сохранена в presets/replaced",
+            builtin_path.name,
+            _version_text(builtin_version),
+            _version_text(user_version) or "без номера",
+        )
+    return result
 
 
 def is_circular(text: str) -> bool:
@@ -750,6 +867,7 @@ def prepare_runtime(preset_id: str, output_dir: Path, iface: str, nfqws2: Path =
                     enable_auto_hostlist: bool = False) -> dict:
     if not nfqws2.is_file():
         raise PresetError(f"nfqws2 не найден: {nfqws2}. Установи пакет zapret2")
+    refresh_outdated_builtin_overrides(app_dir)
     source = load_preset(preset_id, app_dir)
     # nfqws2 drops privileges and cannot traverse /home on a typical desktop.
     # Run only from a root-readable snapshot, never from the project directory.

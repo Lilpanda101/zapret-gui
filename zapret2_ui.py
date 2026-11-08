@@ -165,6 +165,10 @@ def preset_matches_category(item: dict, selected_category: str) -> bool:
 class Zapret2Page:
     def __init__(self, app):
         self.app = app
+        try:
+            core.refresh_outdated_builtin_overrides()
+        except Exception:
+            pass
         self.catalog = PresetCatalog.load_from_directory(
             core.APP_DIR / "zapret2" / "presets" / "winws2_builtin",
             core.USER_PRESETS,
