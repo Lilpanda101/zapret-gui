@@ -21,6 +21,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from version import __version__
 
+from signed_manifest import (
+    MANIFEST_NAME,
+    SIGNATURE_NAME,
+    TRUSTED_KEYS,
+    ManifestSignatureError,
+    load_signed_manifest,
+)
+
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 FAKE_DIR = os.path.join(APP_DIR, "fake")
 LISTS_DIR = os.path.join(APP_DIR, "lists")
@@ -31,6 +39,10 @@ HOSTS_FILE = os.path.join(APP_DIR, "hosts.txt")
 UPDATE_META_FILE = os.path.expanduser("~/.config/zapret-gui/update_meta.json")
 
 LOCAL_MANIFEST_CACHE = os.path.expanduser("~/.config/zapret-gui/update-manifest.json")
+# Подпись к последнему проверенному манифесту. Кэш только записывается,
+# как запись о последней проверке, и никогда не читается как fallback:
+# битая подпись - отказ, а не возврат к кэшу.
+LOCAL_MANIFEST_SIGNATURE_CACHE = LOCAL_MANIFEST_CACHE + ".sig"
 
 MIRRORS = [
     "https://git2.zapret.moe",
@@ -161,36 +173,44 @@ class ZapretUpdater:
                     latest = releases[0]
                     tag = latest.get("tag_name", "")
 
-                    # Find update-manifest.json in assets
+                    # Find update-manifest.json in assets. Манифест применяется
+                    # только после проверки Ed25519-подписи над точными байтами.
+                    # Битый манифест - отказ, а не fallback на локальный кэш.
                     manifest_data = None
+                    manifest_raw = None
+                    manifest_signature = None
                     # Try all mirrors to fetch the manifest
                     manifest_mirrors = [mirror] + [m for m in MIRRORS if m != mirror]
                     for m_host in manifest_mirrors:
-                        m_url = f"{m_host}/zapretdiscordyoutube/zapretgui/releases/download/{tag}/update-manifest.json"
+                        m_url = f"{m_host}/zapretdiscordyoutube/zapretgui/releases/download/{tag}/{MANIFEST_NAME}"
+                        s_url = f"{m_host}/zapretdiscordyoutube/zapretgui/releases/download/{tag}/{SIGNATURE_NAME}"
                         try:
                             with self._open_url(m_url, timeout=TIMEOUT + 2) as m_res:
-                                manifest_data = json.loads(m_res.read().decode("utf-8"))
-                                if manifest_data and "files" in manifest_data:
-                                    self.active_mirror = m_host
-                                    break
+                                raw = m_res.read()
+                            with self._open_url(s_url, timeout=TIMEOUT + 2) as s_res:
+                                signature = s_res.read()
                         except Exception:
                             continue
-
-                    if not manifest_data and os.path.exists(LOCAL_MANIFEST_CACHE):
                         try:
-                            with open(LOCAL_MANIFEST_CACHE, "r", encoding="utf-8") as f:
-                                manifest_data = json.load(f)
-                        except Exception:
-                            pass
+                            manifest_data = load_signed_manifest(raw, signature, trusted=TRUSTED_KEYS)
+                        except ManifestSignatureError as exc:
+                            raise RuntimeError(f"Подпись update-manifest.json не сошлась: {exc}") from exc
+                        manifest_raw = raw
+                        manifest_signature = signature
+                        self.active_mirror = m_host
+                        break
 
                     if not manifest_data or "files" not in manifest_data:
                         continue
 
-                    # Cache valid manifest
+                    # Cache valid manifest: только проверенные байты и подпись,
+                    # как запись о последней проверке. Как fallback не читается.
                     try:
                         os.makedirs(os.path.dirname(LOCAL_MANIFEST_CACHE), exist_ok=True)
-                        with open(LOCAL_MANIFEST_CACHE, "w", encoding="utf-8") as f:
-                            json.dump(manifest_data, f)
+                        with open(LOCAL_MANIFEST_CACHE, "wb") as f:
+                            f.write(manifest_raw)
+                        with open(LOCAL_MANIFEST_SIGNATURE_CACHE, "wb") as f:
+                            f.write(manifest_signature)
                     except Exception:
                         pass
 
@@ -204,26 +224,15 @@ class ZapretUpdater:
                     }
                     self.last_check_info = info
                     return info
+            except RuntimeError:
+                raise
             except Exception as e:
                 last_err = e
                 continue
 
-        # If network failed completely, fall back to cached manifest if exists
-        if os.path.exists(LOCAL_MANIFEST_CACHE):
-            try:
-                with open(LOCAL_MANIFEST_CACHE, "r", encoding="utf-8") as f:
-                    manifest_data = json.load(f)
-                return {
-                    "mirror": self.active_mirror,
-                    "tag_name": "cached",
-                    "name": "Cached Zapret 2 Release",
-                    "published_at": "",
-                    "body": "Загружено из локального кэша",
-                    "manifest": manifest_data
-                }
-            except Exception:
-                pass
-
+        # Нет fallback на кэш ~/.config/zapret-gui/update-manifest.json:
+        # ни битый манифест, ни недоступность зеркал не дают права применять
+        # непроверенный локальный файл.
         raise RuntimeError(f"Не удалось связаться с зеркалами Zapret 2: {last_err}")
 
     def decompress_zst(self, compressed_bytes):
