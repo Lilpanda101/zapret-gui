@@ -4,8 +4,9 @@ __pycache__/
 *$py.class
 *.bak
 
-# Testing & Coverage
+# Testing, Linting & Coverage
 .pytest_cache/
+.ruff_cache/
 .coverage
 .coverage.*
 htmlcov/
@@ -17,6 +18,13 @@ setup_disks.sh
 hosts.txt.bak
 badsum_hosts.txt
 custom_hosts.txt
+support_bundle_*.tar.gz
+support_bundle_*.zip
+
+# Build artifacts & packaging
+dist/
+build/
+*.egg-info/
 
 # Local logs and runtimes
 *.log
@@ -26,3 +34,6 @@ env/
 venv/
 .idea/
 .vscode/
+*.swp
+*~
+.DS_Store

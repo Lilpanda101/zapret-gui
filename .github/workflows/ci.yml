@@ -25,6 +25,6 @@ jobs:
       - name: Bash syntax
         run: bash -n engine.sh
       - name: Python compile
-        run: python3 -m py_compile main.py updater.py healer.py zapret2_core.py zapret2_ui.py version.py config_manager.py tray_manager.py persistent_bar.py onboarding.py theme_manager.py window_state.py
+        run: python3 -m py_compile $(git ls-files '*.py')
       - name: Tests under Xvfb
         run: xvfb-run -a python3 -m pytest -q
