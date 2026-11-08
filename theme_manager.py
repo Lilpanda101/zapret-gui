@@ -93,7 +93,7 @@ def get_theme_css(theme_name: str) -> str:
 
 
 def _build_dark_css() -> str:
-    """Dark theme: GitHub/Fluent Dark palette (#0d1117 / #161b22, text #e6edf3, accents #60cdff)."""
+    """Dark theme: Zapret2 dark palette (#202020 / #242424, text #f2f2f2, accents #00c8d0)."""
     return """
 * {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", "Ubuntu", "Cantarell", "Noto Sans", sans-serif;
@@ -102,16 +102,16 @@ def _build_dark_css() -> str:
 }
 
 window {
-    background-color: #0d1117;
-    color: #e6edf3;
+    background-color: #202020;
+    color: #f2f2f2;
 }
 
 /* Universal button styling */
 button {
     background-image: none;
-    background-color: #21262d;
-    color: #e6edf3;
-    border: 1px solid #30363d;
+    background-color: #2e2e2e;
+    color: #f2f2f2;
+    border: 1px solid #3a3a3a;
     border-radius: 6px;
     padding: 7px 16px;
     font-weight: 500;
@@ -122,14 +122,14 @@ button {
 }
 
 button:hover {
-    background-color: #30363d;
-    border-color: #484f58;
+    background-color: #3a3a3a;
+    border-color: #4a4a4a;
     color: #ffffff;
 }
 
 button:active {
-    background-color: #161b22;
-    border-color: #60cdff;
+    background-color: #242424;
+    border-color: #00c8d0;
 }
 
 button:disabled {
@@ -141,13 +141,13 @@ switch {
     min-width: 44px;
     min-height: 22px;
     border-radius: 12px;
-    background-color: #21262d;
-    border: 1px solid #30363d;
+    background-color: #2e2e2e;
+    border: 1px solid #3a3a3a;
 }
 
 switch:checked {
-    background-color: #0078d4;
-    border-color: #60cdff;
+    background-color: #00adb5;
+    border-color: #00c8d0;
 }
 
 switch slider {
@@ -160,15 +160,15 @@ switch slider {
 
 /* Sidebar styling */
 .fluent-sidebar {
-    background-color: #161b22;
-    border-right: 1px solid #21262d;
+    background-color: #242424;
+    border-right: 1px solid #2e2e2e;
     padding: 12px 6px;
 }
 
 .nav-section-title {
     font-size: 11px;
     font-weight: 700;
-    color: #8b949e;
+    color: #9a9a9a;
     letter-spacing: 0.6px;
     margin-top: 14px;
     margin-bottom: 2px;
@@ -180,7 +180,7 @@ switch slider {
     margin: 1px 4px;
     border-radius: 6px;
     font-size: 13px;
-    color: #8b949e;
+    color: #9a9a9a;
     background: transparent;
     border: none;
     box-shadow: none;
@@ -194,10 +194,10 @@ switch slider {
 }
 
 .fluent-nav-item:checked, .fluent-nav-item:active {
-    background-color: #1f242c;
+    background-color: #2e2e2e;
     color: #ffffff;
     font-weight: 600;
-    border-left: 3px solid #60cdff;
+    border-left: 3px solid #00c8d0;
 }
 
 /* Header & Titles */
@@ -210,39 +210,39 @@ switch slider {
 
 .page-subtitle {
     font-size: 13px;
-    color: #8b949e;
+    color: #9a9a9a;
     margin-bottom: 16px;
 }
 
 /* Fluent Cards */
 .fluent-card {
-    background-color: #161b22;
-    border: 1px solid #30363d;
+    background-color: #242424;
+    border: 1px solid #3a3a3a;
     border-radius: 8px;
     padding: 16px 18px;
     margin-bottom: 12px;
 }
 
 .fluent-card:hover {
-    border-color: #484f58;
+    border-color: #4a4a4a;
 }
 
 .fluent-tile {
-    background-color: #161b22;
-    border: 1px solid #30363d;
+    background-color: #242424;
+    border: 1px solid #3a3a3a;
     border-radius: 8px;
     padding: 12px 14px;
     transition: all 120ms ease;
 }
 
 .fluent-tile:hover {
-    background-color: #1f242c;
-    border-color: #484f58;
+    background-color: #2e2e2e;
+    border-color: #4a4a4a;
 }
 
 .tile-title {
     font-size: 11px;
-    color: #8b949e;
+    color: #9a9a9a;
     font-weight: 600;
     margin-bottom: 4px;
 }
@@ -255,35 +255,35 @@ switch slider {
 
 /* Metric Tiles Row (Top of Dashboard) */
 .metric-tile {
-    background-color: #161b22;
-    border: 1px solid #30363d;
+    background-color: #242424;
+    border: 1px solid #3a3a3a;
     border-radius: 8px;
     padding: 10px 14px;
     transition: all 120ms ease;
 }
 
 .metric-tile:hover {
-    border-color: #484f58;
+    border-color: #4a4a4a;
 }
 
 .metric-tile-label {
     font-size: 11px;
     font-weight: 600;
-    color: #8b949e;
+    color: #9a9a9a;
     letter-spacing: 0.4px;
 }
 
 .metric-tile-val {
     font-size: 14px;
     font-weight: 600;
-    color: #e6edf3;
+    color: #f2f2f2;
     margin-top: 2px;
 }
 
 /* Fluent Setting Row Card */
 .fluent-setting-row {
-    background-color: #161b22;
-    border: 1px solid #30363d;
+    background-color: #242424;
+    border: 1px solid #3a3a3a;
     border-radius: 8px;
     padding: 12px 16px;
     margin-bottom: 6px;
@@ -291,7 +291,7 @@ switch slider {
 }
 
 .fluent-setting-row:hover {
-    border-color: #484f58;
+    border-color: #4a4a4a;
     background-color: #1c2128;
 }
 
@@ -322,7 +322,7 @@ switch slider {
 /* Button Variants */
 .fluent-btn-primary {
     background-image: none;
-    background-color: #0078d4;
+    background-color: #00adb5;
     color: #ffffff;
     border: 1px solid #1084d8;
     font-weight: 600;
@@ -353,16 +353,16 @@ switch slider {
 
 .fluent-btn-secondary {
     background-image: none;
-    background-color: #21262d;
-    color: #e6edf3;
-    border: 1px solid #30363d;
+    background-color: #2e2e2e;
+    color: #f2f2f2;
+    border: 1px solid #3a3a3a;
     border-radius: 6px;
     padding: 7px 16px;
 }
 
 .fluent-btn-secondary:hover {
-    background-color: #30363d;
-    border-color: #484f58;
+    background-color: #3a3a3a;
+    border-color: #4a4a4a;
     color: #ffffff;
 }
 
@@ -400,7 +400,7 @@ switch slider {
 .badge-accent {
     background-color: rgba(96, 205, 255, 0.16);
     border: 1px solid rgba(96, 205, 255, 0.45);
-    color: #60cdff;
+    color: #00c8d0;
     border-radius: 12px;
     padding: 2px 9px;
     font-size: 11px;
@@ -410,7 +410,7 @@ switch slider {
 .badge-neutral {
     background-color: rgba(139, 148, 158, 0.16);
     border: 1px solid rgba(139, 148, 158, 0.35);
-    color: #8b949e;
+    color: #9a9a9a;
     border-radius: 12px;
     padding: 2px 9px;
     font-size: 11px;
@@ -427,20 +427,20 @@ textview, textview text, .log-view, .log-view text {
 
 .log-view {
     padding: 10px;
-    border: 1px solid #30363d;
+    border: 1px solid #3a3a3a;
     border-radius: 6px;
 }
 
 /* Progress bar */
 progressbar trough {
-    background-color: #21262d;
-    border: 1px solid #30363d;
+    background-color: #2e2e2e;
+    border: 1px solid #3a3a3a;
     border-radius: 4px;
     min-height: 8px;
 }
 
 progressbar progress {
-    background-color: #0078d4;
+    background-color: #00adb5;
     border-radius: 4px;
 }
 
@@ -451,17 +451,17 @@ scrolledwindow viewport {
 
 /* ComboBox */
 combobox button.combo {
-    background-color: #21262d;
-    border: 1px solid #30363d;
-    color: #e6edf3;
+    background-color: #2e2e2e;
+    border: 1px solid #3a3a3a;
+    color: #f2f2f2;
     border-radius: 6px;
     padding: 4px 10px;
 }
 
 combobox menu {
-    background-color: #161b22;
-    border: 1px solid #30363d;
-    color: #e6edf3;
+    background-color: #242424;
+    border: 1px solid #3a3a3a;
+    color: #f2f2f2;
 }
 
 /* Content width limiter for ultrawide screens */
@@ -862,40 +862,40 @@ def _build_dark_overrides() -> str:
     return """
 /* ===== Modern refresh: dark ===== */
 window, .background {
-    background-color: #0a0e13;
-    color: #e7eef7;
+    background-color: #202020;
+    color: #f2f2f2;
 }
 
 /* Sidebar */
 .fluent-sidebar {
-    background-color: #0d1218;
-    border-right: 1px solid #1b2531;
+    background-color: #1a1a1a;
+    border-right: 1px solid #2a2a2a;
     padding: 14px 8px;
 }
 .brand-box {
     padding: 0 2px;
 }
 .brand-icon {
-    background-color: rgba(91, 157, 255, 0.12);
-    border: 1px solid rgba(91, 157, 255, 0.22);
+    background-color: rgba(0, 200, 208, 0.12);
+    border: 1px solid rgba(0, 200, 208, 0.22);
     border-radius: 10px;
     padding: 6px 8px;
 }
 .brand-title {
     font-size: 15px;
     font-weight: 700;
-    color: #f2f7ff;
+    color: #ffffff;
     letter-spacing: -0.2px;
 }
 .brand-version {
     font-size: 11px;
-    color: #7f91a8;
+    color: #9a9a9a;
 }
 .brand-icon image {
-    color: #8db9ff;
+    color: #33d6de;
 }
 .nav-section-title {
-    color: #6f8098;
+    color: #8a8a8a;
     font-size: 10px;
     letter-spacing: 0.8px;
     margin-top: 18px;
@@ -904,34 +904,34 @@ window, .background {
     font-weight: 700;
 }
 .fluent-nav-item {
-    color: #93a3b8;
-    border-radius: 9px;
+    color: #a6a6a6;
+    border-radius: 8px;
     padding: 9px 12px;
     margin: 2px 6px;
     border: none;
     box-shadow: none;
 }
 .fluent-nav-item:hover {
-    background-color: #151d27;
-    color: #e7eef7;
+    background-color: #262626;
+    color: #ffffff;
 }
 .fluent-nav-item:checked {
-    background-color: rgba(91, 157, 255, 0.14);
-    color: #f2f7ff;
+    background-color: #2e2e2e;
+    color: #ffffff;
     font-weight: 600;
     border-left: none;
-    box-shadow: inset 3px 0 0 #5b9dff;
+    box-shadow: none;
 }
 .fluent-nav-item image {
-    color: #93a3b8;
+    color: #a6a6a6;
 }
 .fluent-nav-item:checked image {
-    color: #8db9ff;
+    color: #33d6de;
 }
 .section-title {
     font-size: 13px;
     font-weight: 600;
-    color: #c9d6e5;
+    color: #d6d6d6;
     letter-spacing: 0.2px;
     margin-top: 14px;
     margin-bottom: 8px;
@@ -939,48 +939,48 @@ window, .background {
 
 /* Buttons */
 button {
-    background-color: #141b24;
-    color: #dbe5f1;
-    border: 1px solid #26313f;
-    border-radius: 9px;
+    background-color: #2e2e2e;
+    color: #f2f2f2;
+    border: 1px solid #3a3a3a;
+    border-radius: 8px;
     padding: 8px 15px;
     font-weight: 500;
     font-size: 13px;
     box-shadow: none;
 }
 button:hover {
-    background-color: #1a2430;
-    border-color: #35455a;
+    background-color: #3a3a3a;
+    border-color: #4a4a4a;
     color: #ffffff;
 }
 button:active {
-    background-color: #101720;
-    border-color: #5b9dff;
+    background-color: #262626;
+    border-color: #00c8d0;
 }
 button:focus {
-    box-shadow: 0 0 0 3px rgba(91, 157, 255, 0.18);
+    box-shadow: 0 0 0 3px rgba(0, 200, 208, 0.20);
 }
 .fluent-btn-primary {
-    background-color: #3d7bf0;
-    border-color: #3d7bf0;
+    background-color: #00adb5;
+    border-color: #00adb5;
     color: #ffffff;
     font-weight: 600;
     box-shadow: none;
 }
 .fluent-btn-primary:hover {
-    background-color: #4d89f5;
-    border-color: #4d89f5;
+    background-color: #00bcc5;
+    border-color: #00bcc5;
     box-shadow: none;
 }
 .fluent-btn-secondary {
-    background-color: #141b24;
-    border-color: #26313f;
-    color: #dbe5f1;
+    background-color: #2e2e2e;
+    border-color: #3a3a3a;
+    color: #f2f2f2;
     box-shadow: none;
 }
 .fluent-btn-secondary:hover {
-    background-color: #1a2430;
-    border-color: #35455a;
+    background-color: #3a3a3a;
+    border-color: #4a4a4a;
 }
 .fluent-btn-danger {
     background-color: #c9484a;
@@ -995,36 +995,36 @@ button:focus {
 
 /* Inputs */
 entry, spinbutton, searchentry, combobox button, combobox button.combo {
-    background-color: #0d131a;
-    color: #e7eef7;
-    border: 1px solid #26313f;
-    border-radius: 9px;
+    background-color: #2a2a2a;
+    color: #f2f2f2;
+    border: 1px solid #3a3a3a;
+    border-radius: 8px;
     padding: 8px 12px;
     box-shadow: none;
-    caret-color: #5b9dff;
+    caret-color: #00c8d0;
 }
 entry:focus, spinbutton:focus, combobox button:focus {
-    border-color: #4d89f5;
-    box-shadow: 0 0 0 3px rgba(91, 157, 255, 0.16);
+    border-color: #00c8d0;
+    box-shadow: 0 0 0 3px rgba(0, 200, 208, 0.16);
 }
 entry:disabled {
-    color: #6f8098;
+    color: #8a8a8a;
 }
 entry selection, textview selection {
-    background-color: #3d7bf0;
+    background-color: #00adb5;
     color: #ffffff;
 }
 combobox arrow {
-    color: #93a3b8;
+    color: #a6a6a6;
 }
 
 /* Text views and logs */
 textview, textview text, .log-view, .log-view text {
-    background-color: #0b1016;
-    color: #c9d6e5;
+    background-color: #171717;
+    color: #e8e8e8;
 }
 textview {
-    border: 1px solid #1f2935;
+    border: 1px solid #2f2f2f;
     border-radius: 9px;
 }
 textview text {
@@ -1033,19 +1033,19 @@ textview text {
 
 /* Tree view (orchestra results, catalogs) */
 treeview.view {
-    background-color: #0d131a;
-    color: #dbe5f1;
+    background-color: #1e1e1e;
+    color: #f2f2f2;
     border: none;
 }
 treeview.view:selected {
-    background-color: rgba(91, 157, 255, 0.20);
+    background-color: rgba(0, 200, 208, 0.20);
     color: #ffffff;
 }
 treeview.view header button {
-    background-color: #121a23;
-    color: #8fa0b5;
+    background-color: #242424;
+    color: #9a9a9a;
     border: none;
-    border-bottom: 1px solid #26313f;
+    border-bottom: 1px solid #2f2f2f;
     border-radius: 0;
     padding: 8px 10px;
     font-weight: 600;
@@ -1053,8 +1053,8 @@ treeview.view header button {
     box-shadow: none;
 }
 treeview.view header button:hover {
-    background-color: #17202b;
-    color: #e7eef7;
+    background-color: #2a2a2a;
+    color: #ffffff;
 }
 
 /* Scrollbars: the old white trough was the most visible artifact */
@@ -1066,14 +1066,14 @@ scrollbar trough {
     background-color: transparent;
 }
 scrollbar slider {
-    background-color: #2c3a4b;
+    background-color: #3d3d3d;
     border-radius: 8px;
     min-width: 8px;
     min-height: 8px;
     margin: 2px;
 }
 scrollbar slider:hover {
-    background-color: #40536a;
+    background-color: #4f4f4f;
 }
 scrolledwindow undershoot, scrolledwindow overshoot {
     background: none;
@@ -1083,51 +1083,51 @@ scrolledwindow undershoot, scrolledwindow overshoot {
 
 /* Cards */
 .fluent-card {
-    background-color: #111821;
-    border: 1px solid #202b38;
-    border-radius: 13px;
+    background-color: #282828;
+    border: 1px solid #2f2f2f;
+    border-radius: 10px;
     padding: 18px 20px;
     margin-bottom: 12px;
     box-shadow: none;
 }
 .fluent-card:hover {
-    border-color: #2c3a4b;
+    border-color: #3a3a3a;
 }
 .fluent-tile {
-    background-color: #0d131a;
-    border: 1px solid #202b38;
-    border-radius: 11px;
+    background-color: #242424;
+    border: 1px solid #2f2f2f;
+    border-radius: 10px;
     padding: 12px 14px;
 }
 .fluent-tile:hover {
-    background-color: #121a23;
-    border-color: #2c3a4b;
+    background-color: #2c2c2c;
+    border-color: #3a3a3a;
 }
 .fluent-setting-row {
-    background-color: #111821;
-    border: 1px solid #202b38;
-    border-radius: 12px;
-    padding: 13px 16px;
+    background-color: #282828;
+    border: 1px solid #2f2f2f;
+    border-radius: 10px;
+    padding: 16px 18px;
     margin-bottom: 8px;
 }
 .fluent-setting-row:hover {
-    background-color: #141d27;
-    border-color: #2c3a4b;
+    background-color: #2e2e2e;
+    border-color: #3a3a3a;
 }
 .setting-icon-box {
-    background-color: rgba(91, 157, 255, 0.10);
+    background-color: rgba(0, 200, 208, 0.10);
     border-radius: 9px;
     padding: 7px 9px;
 }
 .setting-icon-image {
-    color: #8db9ff;
+    color: #33d6de;
 }
 
 /* Typography */
 .page-title {
     font-size: 26px;
     font-weight: 700;
-    color: #f2f7ff;
+    color: #ffffff;
     letter-spacing: -0.3px;
     margin-top: 4px;
     margin-bottom: 4px;
@@ -1135,37 +1135,35 @@ scrolledwindow undershoot, scrolledwindow overshoot {
 }
 .page-subtitle {
     font-size: 13px;
-    color: #93a3b8;
+    color: #9a9a9a;
     margin-bottom: 20px;
 }
 .tile-title, .metric-tile-label {
     font-size: 10px;
     letter-spacing: 0.7px;
-    color: #7f91a8;
+    color: #8a8a8a;
     font-weight: 700;
 }
 .tile-value, .metric-tile-val {
-    color: #f2f7ff;
+    color: #ffffff;
     font-weight: 600;
     font-size: 14px;
 }
 
 /* Status banner: flat surface with a quiet accent, no glow */
 .status-banner-active {
-    background-color: #111821;
+    background-color: #282828;
     background-image: none;
-    border: 1px solid #202b38;
-    border-left: 4px solid #46b97f;
-    border-radius: 13px;
+    border: 1px solid #2f2f2f;
+    border-radius: 10px;
     padding: 18px 20px;
     box-shadow: none;
 }
 .status-banner-inactive {
-    background-color: #111821;
+    background-color: #282828;
     background-image: none;
-    border: 1px solid #202b38;
-    border-left: 4px solid #e06a63;
-    border-radius: 13px;
+    border: 1px solid #2f2f2f;
+    border-radius: 10px;
     padding: 18px 20px;
     box-shadow: none;
 }
@@ -1194,73 +1192,76 @@ scrolledwindow undershoot, scrolledwindow overshoot {
     color: #ef8a84;
 }
 .badge-accent {
-    background-color: rgba(91, 157, 255, 0.12);
-    border: 1px solid rgba(91, 157, 255, 0.32);
-    color: #8db9ff;
+    background-color: rgba(0, 200, 208, 0.12);
+    border: 1px solid rgba(0, 200, 208, 0.32);
+    color: #33d6de;
 }
 .badge-neutral {
     background-color: rgba(143, 160, 181, 0.10);
     border: 1px solid rgba(143, 160, 181, 0.25);
-    color: #a6b4c7;
+    color: #a6a6a6;
 }
 .badge-tag-v2 {
-    background-color: rgba(91, 157, 255, 0.12);
-    color: #8db9ff;
+    background-color: rgba(0, 200, 208, 0.12);
+    color: #33d6de;
 }
 .badge-tag-legacy {
     background-color: rgba(143, 160, 181, 0.10);
-    color: #a6b4c7;
+    color: #a6a6a6;
 }
 
 /* Switches & checks */
 switch {
-    min-width: 42px;
-    min-height: 24px;
+    min-width: 46px;
+    min-height: 26px;
     border-radius: 999px;
-    background-color: #24303f;
-    border: 1px solid #24303f;
+    background-color: #4a4a4a;
+    border: 1px solid #4a4a4a;
 }
 switch:checked {
-    background-color: #3d7bf0;
-    border-color: #3d7bf0;
+    background-color: #00c8d0;
+    border-color: #00c8d0;
 }
 switch slider {
     min-width: 18px;
     min-height: 18px;
     border-radius: 50%;
-    background-color: #ffffff;
+    background-color: #8a8a8a;
     margin: 2px;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
+switch:checked slider {
+    background-color: #111111;
+}
 check, radio {
-    background-color: #0d131a;
-    border: 1px solid #35455a;
+    background-color: #1e1e1e;
+    border: 1px solid #4a4a4a;
     border-radius: 5px;
 }
 check:checked, radio:checked {
-    background-color: #3d7bf0;
-    border-color: #3d7bf0;
+    background-color: #00adb5;
+    border-color: #00adb5;
     color: #ffffff;
 }
 
 /* Progress */
 progressbar trough {
-    background-color: #1a2430;
+    background-color: #2e2e2e;
     border: none;
     border-radius: 999px;
     min-height: 8px;
 }
 progressbar progress {
-    background-color: #3d7bf0;
+    background-color: #00c8d0;
     border-radius: 999px;
     min-height: 8px;
 }
 
 /* Menus, popovers, tooltips */
 menu, .menu, popover, popover.background {
-    background-color: #111821;
-    color: #dbe5f1;
-    border: 1px solid #26313f;
+    background-color: #242424;
+    color: #f2f2f2;
+    border: 1px solid #2f2f2f;
     border-radius: 10px;
 }
 menuitem {
@@ -1268,25 +1269,25 @@ menuitem {
     border-radius: 6px;
 }
 menuitem:hover {
-    background-color: #1a2430;
+    background-color: #2e2e2e;
     color: #ffffff;
 }
 tooltip, tooltip.background {
-    background-color: #111821;
-    color: #e7eef7;
-    border: 1px solid #26313f;
+    background-color: #242424;
+    color: #ffffff;
+    border: 1px solid #2f2f2f;
     border-radius: 8px;
     padding: 6px 10px;
 }
 
 /* Classes used by newer pages */
-.feature-bullet { color: #a6b4c7; }
+.feature-bullet { color: #a6a6a6; }
 .filter-pill {
-    background-color: #17202b;
-    border: 1px solid #26313f;
+    background-color: #2a2a2a;
+    border: 1px solid #2f2f2f;
     border-radius: 999px;
     padding: 4px 10px;
-    color: #a6b4c7;
+    color: #a6a6a6;
     font-size: 12px;
 }
 .game-warning-banner {
@@ -1296,43 +1297,43 @@ tooltip, tooltip.background {
     padding: 12px 14px;
 }
 .health-grid-tile {
-    background-color: #0d131a;
-    border: 1px solid #202b38;
+    background-color: #1e1e1e;
+    border: 1px solid #2f2f2f;
     border-radius: 11px;
     padding: 12px 14px;
 }
 .persistent-status-bar {
-    background-color: #0d1218;
-    border-top: 1px solid #1b2531;
+    background-color: #1a1a1a;
+    border-top: 1px solid #2a2a2a;
     padding: 6px 12px;
 }
-.persistent-bar-info { color: #93a3b8; font-size: 12px; }
+.persistent-bar-info { color: #9a9a9a; font-size: 12px; }
 .persistent-toggle-btn {
     border-radius: 8px;
     padding: 4px 12px;
 }
-.onboarding-window { background-color: #0d1218; }
+.onboarding-window { background-color: #1a1a1a; }
 .onboarding-card {
-    background-color: #111821;
-    border: 1px solid #202b38;
+    background-color: #242424;
+    border: 1px solid #2f2f2f;
     border-radius: 14px;
     padding: 20px;
 }
-.onboarding-card-accent { border-color: rgba(91, 157, 255, 0.40); }
+.onboarding-card-accent { border-color: rgba(0, 200, 208, 0.40); }
 .onboarding-step-pill {
-    background-color: #17202b;
-    color: #93a3b8;
+    background-color: #2a2a2a;
+    color: #9a9a9a;
     border-radius: 999px;
     padding: 4px 10px;
     font-size: 12px;
 }
 .onboarding-step-pill-active {
-    background-color: rgba(91, 157, 255, 0.16);
-    color: #eaf2ff;
+    background-color: rgba(0, 200, 208, 0.16);
+    color: #e6feff;
 }
-expander title { color: #93a3b8; }
-expander title:hover { color: #e7eef7; }
-separator { background-color: #1b2531; min-height: 1px; }
+expander title { color: #9a9a9a; }
+expander title:hover { color: #ffffff; }
+separator { background-color: #2a2a2a; min-height: 1px; }
 """
 
 

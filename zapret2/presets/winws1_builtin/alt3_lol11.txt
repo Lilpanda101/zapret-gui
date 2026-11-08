@@ -1,0 +1,87 @@
+--new
+
+--filter-tcp=80
+--dpi-desync=fake,split2
+--dpi-desync-autottl=2
+--dpi-desync-fooling=md5sig
+
+# === HTTPS ===
+
+--new
+
+--filter-tcp=6695-6705
+--dpi-desync=fake,split2
+--dpi-desync-repeats=8
+--dpi-desync-fooling=md5sig
+--dpi-desync-autottl=2
+--dpi-desync-fake-tls=fake/tls_clienthello_www_google_com.bin
+
+# === TCP порт 2099 ===
+
+--new
+
+--comment=Cloudflare TCP
+--filter-tcp=80,443-65535
+--ipset=lists/ipset-cloudflare.txt
+--dpi-desync=syndata
+
+# === UDP порт 2099 ===
+
+--new
+
+--comment=Cloudflare UDP
+--filter-udp=443-65535
+--ipset=lists/ipset-cloudflare.txt
+--dpi-desync=fake
+--dpi-desync-repeats=6
+--dpi-desync-fake-quic=fake/quic_initial_www_google_com.bin
+
+# === UDP порт 5056 ===
+
+--new
+
+--comment=Игровые UDP порты
+--filter-udp=5056,27002
+--dpi-desync-any-protocol
+--dpi-desync=fake
+--dpi-desync-repeats=6
+--dpi-desync-cutoff=n15
+--dpi-desync-fake-unknown-udp=fake/quic_initial_www_google_com.bin
+
+# === UDP порт 5000 ===
+
+--new
+
+--comment=League of Legends RU UDP
+--filter-udp=443-65535
+--ipset=lists/ipset-lol-ru.txt
+--dpi-desync=fake
+--dpi-desync-repeats=6
+
+# === UDP порт 5056 ===
+
+--new
+
+--comment=League of Legends RU TCP
+--filter-tcp=80,443-65535
+--ipset=lists/ipset-lol-ru.txt
+--dpi-desync=syndata
+
+# === TCP порт 5222 ===
+
+--new
+
+--comment=League of Legends EUW TCP
+--filter-tcp=80,443-65535
+--ipset=lists/ipset-lol-euw.txt
+--dpi-desync=syndata
+
+# === UDP порт 5000 ===
+
+--new
+
+--comment=League of Legends EUW UDP
+--filter-udp=443-65535
+--ipset=lists/ipset-lol-euw.txt
+--dpi-desync=fake
+--dpi-desync-repeats=6

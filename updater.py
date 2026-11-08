@@ -26,6 +26,8 @@ from signed_manifest import (
     SIGNATURE_NAME,
     TRUSTED_KEYS,
     ManifestSignatureError,
+    BsdiffError,
+    apply_bsdiff,
     load_signed_manifest,
 )
 
@@ -37,6 +39,29 @@ BADSUM_FILE = os.path.join(APP_DIR, "badsum_hosts.txt")
 EXCLUDE_FILE = os.path.join(APP_DIR, "exclude.txt")
 HOSTS_FILE = os.path.join(APP_DIR, "hosts.txt")
 UPDATE_META_FILE = os.path.expanduser("~/.config/zapret-gui/update_meta.json")
+
+RESCUE_DIR = "/mnt/hdd2tb/DataStore/Temp/zapret-gui-rescue"
+DEFAULT_PRESERVE = [
+    os.path.expanduser("~/.config/zapret-gui"),
+    os.path.expanduser("~/.config/zapret-gui/config.json"),
+    os.path.expanduser("~/.config/zapret-gui/presets"),
+    os.path.expanduser("~/.config/zapret-gui/autohostlist.txt"),
+    os.path.expanduser("~/.config/zapret-gui/update_meta.json"),
+    "custom_hosts.txt",
+    "hosts.txt",
+    "badsum_hosts.txt",
+    "exclude.txt",
+]
+DEFAULT_KEEP_RUNNING = [
+    "engine.sh",
+    "zapret",
+    "nfqws",
+    "nfqws2",
+    "tpws",
+    "zapret2_core",
+    "zapret-watchdog",
+    "zapret-watchdog.sh",
+]
 
 LOCAL_MANIFEST_CACHE = os.path.expanduser("~/.config/zapret-gui/update-manifest.json")
 # Подпись к последнему проверенному манифесту. Кэш только записывается,
@@ -402,7 +427,208 @@ class ZapretUpdater:
         with open(UPDATE_META_FILE, "w", encoding="utf-8") as mf:
             json.dump(meta, mf, indent=2, ensure_ascii=False)
 
+        # Save installed manifest and hashes cache
+        if "manifest_raw" in info and "signature_raw" in info:
+            self.save_installed_manifest(info["manifest_raw"], info["signature_raw"], manifest)
+
         return meta
+
+    def build_update_plan(
+        self,
+        target_version: str,
+        from_version: str | None = None,
+        preserve: list[str] | None = None,
+        keep_running: list[str] | None = None,
+        rescue_dir: str = RESCUE_DIR,
+    ) -> dict:
+        """
+        Creates an update plan (plan.json) following the Zapret 2 update specification.
+        Guarantees user settings preservation, keep_running daemon list, and rescue directory configuration.
+        """
+        work_dir = os.path.join(self.app_dir, ".update", target_version)
+        tree_dir = os.path.join(work_dir, "tree")
+        plan = {
+            "product": "zapret-gui",
+            "version": target_version,
+            "from_version": from_version or __version__,
+            "app_dir": self.app_dir,
+            "tree_dir": tree_dir,
+            "work_dir": work_dir,
+            "app_pid": os.getpid(),
+            "app_exe": "main.py",
+            "restart_args": ["--tray"],
+            "preserve": list(preserve) if preserve is not None else list(DEFAULT_PRESERVE),
+            "remove": ["*.orig", "*.tmp"],
+            "failure_file": os.path.join(work_dir, "failure.txt"),
+            "blocker_file": os.path.join(work_dir, "blocker.txt"),
+            "error_log": os.path.join(work_dir, "error.log"),
+            "hold_file": "",
+            "keep_running": list(keep_running) if keep_running is not None else list(DEFAULT_KEEP_RUNNING),
+            "keep_files": [],
+            "rescue_dir": rescue_dir,
+            "extra": {},
+        }
+        return plan
+
+    def download_bsdiff_patch(self, from_sha: str, to_sha: str) -> bytes:
+        """Downloads a bsdiff delta patch from generic store."""
+        patch_name = f"{from_sha}-{to_sha}.bsdiff"
+        mirrors_to_try = [self.active_mirror] + [m for m in MIRRORS if m != self.active_mirror]
+        last_err = None
+
+        for mirror in mirrors_to_try:
+            url = f"{mirror}/api/packages/zapretdiscordyoutube/generic/zapret-gui-store/1/{patch_name}"
+            try:
+                with self._open_url(url, timeout=TIMEOUT + 4) as res:
+                    return res.read()
+            except Exception as e:
+                last_err = e
+                continue
+        raise RuntimeError(f"Не удалось скачать патч {patch_name}: {last_err}")
+
+    def apply_file_update(
+        self,
+        dest_path: str,
+        file_info: dict,
+        bsdiff_map: dict | None = None,
+        rescue_backup_dir: str | None = None,
+    ) -> tuple[bool, str]:
+        """
+        Applies update to a single file using bsdiff delta patches when available,
+        with automatic fallback to full blob download.
+        Backs up previous file into rescue_backup_dir for atomic rollback.
+        """
+        expected_sha = file_info.get("sha256")
+        expected_size = file_info.get("size")
+        if not expected_sha or expected_size is None:
+            raise ValueError(f"Некорректные метаданные файла: {file_info}")
+
+        # Check if already matches
+        current_data = None
+        current_sha = None
+        if os.path.isfile(dest_path):
+            try:
+                with open(dest_path, "rb") as cur_f:
+                    current_data = cur_f.read()
+                current_sha = hashlib.sha256(current_data).hexdigest()
+                if current_sha == expected_sha and len(current_data) == expected_size:
+                    return False, "up_to_date"
+            except OSError:
+                pass
+
+        # Backup for rescue if backup dir specified
+        if rescue_backup_dir and current_data is not None:
+            rel = os.path.relpath(dest_path, self.app_dir)
+            backup_target = os.path.join(rescue_backup_dir, rel)
+            os.makedirs(os.path.dirname(backup_target), exist_ok=True)
+            with open(backup_target, "wb") as bf:
+                bf.write(current_data)
+
+        # Attempt bsdiff delta patch
+        new_data = None
+        applied_delta = False
+        if current_data is not None and bsdiff_map and current_sha:
+            patch_info = bsdiff_map.get((current_sha, expected_sha))
+            if patch_info:
+                try:
+                    patch_bytes = self.download_bsdiff_patch(current_sha, expected_sha)
+                    patched = apply_bsdiff(current_data, patch_bytes, expected_size=expected_size)
+                    if hashlib.sha256(patched).hexdigest() == expected_sha:
+                        new_data = patched
+                        applied_delta = True
+                except Exception as exc:
+                    print(f"[ZapretUpdater] Delta patch failed for {dest_path}, falling back to full download: {exc}")
+
+        # Fallback to full blob download
+        if new_data is None:
+            new_data = self.download_blob(expected_sha, expected_size)
+
+        # Atomic write with sync
+        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+        temporary = dest_path + f".tmp-{threading.get_ident()}-{time.time()}"
+        try:
+            with open(temporary, "wb") as out_f:
+                out_f.write(new_data)
+                out_f.flush()
+                os.fsync(out_f.fileno())
+            os.replace(temporary, dest_path)
+        finally:
+            if os.path.exists(temporary):
+                try:
+                    os.unlink(temporary)
+                except OSError:
+                    pass
+
+        return True, "bsdiff" if applied_delta else "full_blob"
+
+    def rollback_from_rescue(self, journal_path: str, rescue_dir: str = RESCUE_DIR) -> bool:
+        """
+        Rolls back updated files from rescue directory using journal.json.
+        Returns True if rollback completed successfully.
+        """
+        if not os.path.isfile(journal_path):
+            return False
+
+        try:
+            with open(journal_path, "r", encoding="utf-8") as jf:
+                journal = json.load(jf)
+        except Exception:
+            return False
+
+        backed_up_files = journal.get("files", [])
+        for rel_path in backed_up_files:
+            backup_file = os.path.join(rescue_dir, rel_path)
+            target_file = os.path.join(self.app_dir, rel_path)
+            if os.path.isfile(backup_file):
+                os.makedirs(os.path.dirname(target_file), exist_ok=True)
+                shutil.copy2(backup_file, target_file)
+
+        return True
+
+    def save_installed_manifest(self, raw_manifest: bytes, raw_sig: bytes, manifest_dict: dict):
+        """
+        Saves verified installed-manifest.json and signature to system/update/
+        and writes fast-lookup hashes cache to .update/hashes.json.
+        """
+        sys_update_dir = os.path.join(self.app_dir, "system", "update")
+        os.makedirs(sys_update_dir, exist_ok=True)
+
+        m_path = os.path.join(sys_update_dir, "installed-manifest.json")
+        s_path = os.path.join(sys_update_dir, "installed-manifest.json.sig")
+
+        # Atomic write
+        for path, data in ((m_path, raw_manifest), (s_path, raw_sig)):
+            tmp = path + ".tmp"
+            with open(tmp, "wb") as f:
+                f.write(data)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, path)
+
+        # Build .update/hashes.json
+        dot_update_dir = os.path.join(self.app_dir, ".update")
+        os.makedirs(dot_update_dir, exist_ok=True)
+        hashes_path = os.path.join(dot_update_dir, "hashes.json")
+
+        hashes_cache = {}
+        for fi in manifest_dict.get("files", []):
+            rel = fi.get("path")
+            sha = fi.get("sha256")
+            size = fi.get("size")
+            if rel and sha and size is not None:
+                full_p = os.path.join(self.app_dir, rel)
+                try:
+                    st = os.stat(full_p)
+                    hashes_cache[full_p] = [size, getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9)), sha]
+                except OSError:
+                    hashes_cache[full_p] = [size, 0, sha]
+
+        tmp_h = hashes_path + ".tmp"
+        with open(tmp_h, "w", encoding="utf-8") as hf:
+            json.dump(hashes_cache, hf, indent=1)
+            hf.flush()
+            os.fsync(hf.fileno())
+        os.replace(tmp_h, hashes_path)
 
 
 def get_update_meta():

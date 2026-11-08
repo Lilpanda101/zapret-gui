@@ -1,0 +1,22 @@
+--new
+
+--filter-tcp=443
+--ipset-exclude=lists/ipset-ru.txt
+--ipset-exclude=lists/ipset-dns.txt
+--ipset-exclude=lists/ipset-exclude.txt
+--dpi-desync=syndata,multidisorder
+--dpi-desync-split-pos=4
+--dpi-desync-repeats=10
+--dpi-desync-fooling=md5sig
+--dpi-desync-fake-tls=fake/tls_clienthello_vk_com_kyber.bin
+
+# === QUIC YouTube ===
+
+--new
+
+--filter-udp=443
+--hostlist=lists/youtubeQ.txt
+--dpi-desync=fake,split2
+--dpi-desync-repeats=10
+--dpi-desync-udplen-increment=25
+--dpi-desync-fake-quic=fake/quic_initial_www_google_com.bin

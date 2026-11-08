@@ -1,0 +1,161 @@
+# Preset: general_181
+# BuiltinVersion: 1.0
+# IconColor: #60cdff
+# Description: Imported from bat/general_181.txt
+
+--wf-tcp=80,443,1024-65535
+--wf-udp=443,1024-65535,50000-50100
+
+# === zapret.moe ===
+--comment=zapret.moe
+--filter-tcp=443
+--hostlist=lists/zapret-moe.txt
+--dpi-desync=hostfakesplit
+--dpi-desync-repeats=4
+--dpi-desync-fooling=ts,md5sig
+--dpi-desync-hostfakesplit-mod=host=ozon.ru
+
+--new
+
+--filter-udp=50000-50100
+--dpi-desync=fake
+--dpi-desync-repeats=6
+
+# === HTTP (порт 80) ===
+
+--new
+
+--comment=General list TCP
+--filter-tcp=80,443
+--hostlist=lists/list-general.txt
+--dpi-desync=fake,split2
+--dpi-desync-autottl=2
+--dpi-desync-fooling=md5sig
+
+# === HTTPS ===
+
+--new
+
+--comment=Мои сайты
+--filter-tcp=80,443-65535
+--ipset=lists/ipset-all.txt
+--dpi-desync=fake,split2
+--dpi-desync-autottl=2
+--dpi-desync-fooling=md5sig
+
+--new
+
+--comment=SoundCloud
+--filter-tcp=80,443
+--hostlist=lists/soundcloud.txt
+--dpi-desync=fake,split
+--dpi-desync-autottl=5
+--dpi-desync-repeats=6
+--dpi-desync-fooling=badseq
+--dpi-desync-fake-tls=fake/tls_clienthello_www_google_com.bin
+
+# === QUIC ===
+
+--new
+
+--comment=rutracker.org
+--filter-tcp=80,443
+--hostlist=lists/rutracker.txt
+--dpi-desync=fake,split
+--dpi-desync-autottl=5
+--dpi-desync-repeats=6
+--dpi-desync-fooling=badseq
+--dpi-desync-fake-tls=fake/tls_clienthello_www_google_com.bin
+
+# === QUIC ===
+
+--new
+
+--comment=rutor.info (.is)
+--filter-tcp=80,443
+--hostlist=lists/rutor.txt
+--dpi-desync=fake,split
+--dpi-desync-autottl=5
+--dpi-desync-repeats=6
+--dpi-desync-fooling=badseq
+--dpi-desync-fake-tls=fake/tls_clienthello_www_google_com.bin
+
+# === QUIC ===
+
+--new
+
+--comment=Roblox · игра
+--filter-tcp=80,443-65535
+--hostlist=lists/roblox.txt
+--dpi-desync=fake,split
+--dpi-desync-autottl=5
+--dpi-desync-repeats=6
+--dpi-desync-fooling=badseq
+--dpi-desync-fake-tls=fake/tls_clienthello_www_google_com.bin
+
+# === QUIC ===
+
+--new
+
+--comment=itch.io
+--filter-tcp=80,443
+--hostlist=lists/itch.txt
+--dpi-desync=fake,split
+--dpi-desync-autottl=5
+--dpi-desync-repeats=6
+--dpi-desync-fooling=badseq
+--dpi-desync-fake-tls=fake/tls_clienthello_www_google_com.bin
+
+# === QUIC ===
+
+--new
+
+--comment=Facebook
+--filter-tcp=80,443
+--hostlist=lists/facebook.txt
+--dpi-desync=fake,split
+--dpi-desync-autottl=5
+--dpi-desync-repeats=6
+--dpi-desync-fooling=badseq
+--dpi-desync-fake-tls=fake/tls_clienthello_www_google_com.bin
+
+# === QUIC ===
+
+--new
+
+--comment=Instagram
+--filter-tcp=80,443
+--hostlist=lists/instagram.txt
+--dpi-desync=fake,split
+--dpi-desync-autottl=5
+--dpi-desync-repeats=6
+--dpi-desync-fooling=badseq
+--dpi-desync-fake-tls=fake/tls_clienthello_www_google_com.bin
+
+# === QUIC ===
+
+--new
+
+--comment=Twitter/X
+--filter-tcp=80,443
+--hostlist=lists/twitter.txt
+--dpi-desync=fake,split
+--dpi-desync-autottl=5
+--dpi-desync-repeats=6
+--dpi-desync-fooling=badseq
+--dpi-desync-fake-tls=fake/tls_clienthello_www_google_com.bin
+
+# === QUIC ===
+
+--new
+
+--comment=WhatsApp · сообщения
+--filter-tcp=80,443
+--hostlist=lists/whatsapp.txt
+--dpi-desync=fake,split
+--dpi-desync-autottl=5
+--dpi-desync-repeats=6
+--dpi-desync-fooling=badseq
+--dpi-desync-fake-tls=fake/tls_clienthello_www_google_com.bin
+
+# === QUIC ===

@@ -1,0 +1,37 @@
+# Preset: original_bolvan_v2_badsum_6
+# BuiltinVersion: 1.0
+# IconColor: #60cdff
+# Description: Imported from bat/original_bolvan_v2_badsum_6.txt
+
+--wf-tcp=443
+
+# === zapret.moe ===
+--comment=zapret.moe
+--filter-tcp=443
+--hostlist=lists/zapret-moe.txt
+--dpi-desync=hostfakesplit
+--dpi-desync-repeats=4
+--dpi-desync-fooling=ts,md5sig
+--dpi-desync-hostfakesplit-mod=host=ozon.ru
+
+--new
+
+# === HTTPS YouTube ===
+--comment=YouTube · сайт и приложение
+--filter-tcp=80,443
+--hostlist=lists/youtube.txt
+--dpi-desync=fake,multidisorder
+--dpi-desync-split-pos=1,midsld
+--dpi-desync-repeats=6
+--dpi-desync-fooling=badseq
+--dpi-desync-fake-tls-mod=rnd,dupsid,sni=www.google.com
+
+--new
+
+--filter-tcp=443
+--hostlist=lists/faceinsta.txt
+--dpi-desync=fake,multidisorder
+--dpi-desync-split-pos=1,midsld
+--dpi-desync-repeats=6
+--dpi-desync-fooling=badseq
+--dpi-desync-fake-tls-mod=rnd,dupsid,sni=www.google.com

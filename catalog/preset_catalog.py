@@ -22,9 +22,13 @@ class PresetEntry:
     game_filter: bool
     tags: Tuple[str, ...]
     display_name: str
+    author: Optional[str] = None
+    stability: Optional[str] = None
+    description: Optional[str] = None
+    source: Optional[str] = None
 
     def matches_search(self, query: str) -> bool:
-        """Case-insensitive substring search across id, family and tags."""
+        """Case-insensitive substring search across id, family, author, description and tags."""
         q = query.strip().casefold()
         if not q:
             return True
@@ -32,15 +36,85 @@ class PresetEntry:
             q in self.id.casefold()
             or q in self.family.casefold()
             or q in self.display_name.casefold()
+            or (self.author and q in self.author.casefold())
+            or (self.description and q in self.description.casefold())
             or any(q in t.casefold() for t in self.tags)
         )
 
 
-def parse_preset_id(filename: str, text: str = "") -> PresetEntry:
+_STRATEGY_META_CACHE: Dict[str, dict] = {}
+
+
+def _get_strategy_metadata_map() -> Dict[str, dict]:
+    """Loads and caches strategy metadata from system/strategy_catalogs."""
+    global _STRATEGY_META_CACHE
+    if _STRATEGY_META_CACHE:
+        return _STRATEGY_META_CACHE
+
+    res: Dict[str, dict] = {}
+    app_root = Path(__file__).resolve().parent.parent
+    catalogs_dir = app_root / "system" / "strategy_catalogs"
+
+    if catalogs_dir.is_dir():
+        for engine in ("winws2", "winws1"):
+            edir = catalogs_dir / engine
+            if not edir.is_dir():
+                continue
+            for cfile in edir.glob("*.txt"):
+                try:
+                    content = cfile.read_text(encoding="utf-8-sig", errors="ignore")
+                    current_sec = None
+                    sec_data = {}
+                    for line in content.splitlines():
+                        line = line.strip()
+                        if line.startswith("[") and line.endswith("]"):
+                            if current_sec and sec_data:
+                                _index_strategy_meta(res, current_sec, sec_data, engine)
+                            current_sec = line[1:-1].strip()
+                            sec_data = {}
+                        elif current_sec and "=" in line and not line.startswith(("--", "#")):
+                            k, _, v = line.partition("=")
+                            k = k.strip().lower()
+                            v = v.strip()
+                            if k in ("name", "old_name", "author", "label", "stability", "description"):
+                                sec_data[k] = v
+                    if current_sec and sec_data:
+                        _index_strategy_meta(res, current_sec, sec_data, engine)
+                except Exception:
+                    pass
+
+    _STRATEGY_META_CACHE = res
+    return _STRATEGY_META_CACHE
+
+
+def _index_strategy_meta(target_map: Dict[str, dict], section_id: str, data: dict, engine: str):
+    author = data.get("author") or ("Flowseal" if "flowseal" in section_id.lower() else None)
+    stability = data.get("label") or data.get("stability")
+    description = data.get("description")
+    source = f"strategy_catalogs/{engine}"
+
+    entry_data = {
+        "author": author,
+        "stability": stability,
+        "description": description,
+        "source": source,
+    }
+
+    # Index by clean keys
+    target_map[section_id.casefold()] = entry_data
+    if "name" in data:
+        target_map[data["name"].casefold()] = entry_data
+        # also normalized without dots / badges
+        norm_name = re.sub(r"[·\(\)]", "", data["name"]).strip().casefold()
+        target_map[norm_name] = entry_data
+    if "old_name" in data:
+        target_map[data["old_name"].casefold()] = entry_data
+
+
+def parse_preset_id(filename: str, text: str = "", source_type: str = "builtin") -> PresetEntry:
     """
-    Parses a preset filename into structured attributes without modifying the ID.
-    Guarantees word-boundary separation between family and version (e.g. ALT1 vs ALT10).
-    Optionally accepts preset text to accurately detect desync/circular tags.
+    Parses a preset filename into structured attributes with metadata from headers
+    or system strategy catalogs.
     """
     clean_id = filename.strip()
     if clean_id.endswith(".txt"):
@@ -53,8 +127,6 @@ def parse_preset_id(filename: str, text: str = "") -> PresetEntry:
     clean_stem = re.sub(r"\s*\((?:game filter|game)\)", "", stem, flags=re.IGNORECASE).strip()
 
     # Detect version at end of clean stem:
-    # Matches: ' 1.10.3', ' 1.9.9', ' v2', ' v3_1', ' V5', etc.
-    # Notice: requires leading whitespace, preserving 'ALT1' or 'ALT10' in family!
     version_match = re.search(r"\s+([vV]?\d+(?:\.\d+)*(?:_\d+)?)$", clean_stem)
     if version_match:
         version = version_match.group(1)
@@ -82,6 +154,63 @@ def parse_preset_id(filename: str, text: str = "") -> PresetEntry:
     if "alt" in lower_name:
         tags_list.append("alt")
 
+    # Extract metadata from file comments
+    author = None
+    stability = None
+    description = None
+    source = source_type
+
+    if text:
+        for line in text.splitlines():
+            line_str = line.strip()
+            if not line_str.startswith("#"):
+                continue
+            lower_line = line_str.lower()
+            if lower_line.startswith("# author:"):
+                author = line_str.split(":", 1)[1].strip() or author
+            elif lower_line.startswith(("# stability:", "# label:")):
+                stability = line_str.split(":", 1)[1].strip() or stability
+            elif lower_line.startswith("# description:"):
+                desc_val = line_str.split(":", 1)[1].strip()
+                if desc_val and not desc_val.startswith("Imported from"):
+                    description = desc_val
+            elif lower_line.startswith("# source:"):
+                source = line_str.split(":", 1)[1].strip() or source
+
+    # If missing, enrich from strategy catalog map
+    meta_map = _get_strategy_metadata_map()
+    lookup_candidates = [
+        lower_name,
+        clean_stem.casefold(),
+        family.casefold(),
+        re.sub(r"\s+", "_", family.casefold()),
+    ]
+    for cand in lookup_candidates:
+        if cand in meta_map:
+            meta = meta_map[cand]
+            author = author or meta.get("author")
+            stability = stability or meta.get("stability")
+            description = description or meta.get("description")
+            source = source or meta.get("source")
+            break
+
+    # Additional heuristics for standard families
+    if not author:
+        if any(k in lower_name for k in ("general alt", "ytdisbystro", "fake tls auto", "bolvan")):
+            author = "Flowseal / Community"
+        elif "dronatar" in lower_name:
+            author = "Dronatar"
+        elif "loop-uh" in lower_name:
+            author = "loop-uh"
+
+    if not stability:
+        if "recommended" in tags_list:
+            stability = "recommended"
+        elif game_filter:
+            stability = "game"
+        else:
+            stability = "stable"
+
     # Display name: family + version if present + [Game] badge if game_filter
     parts = [family]
     if version:
@@ -97,6 +226,10 @@ def parse_preset_id(filename: str, text: str = "") -> PresetEntry:
         game_filter=game_filter,
         tags=tuple(tags_list),
         display_name=display_name,
+        author=author,
+        stability=stability,
+        description=description,
+        source=source,
     )
 
 
@@ -137,7 +270,7 @@ class PresetCatalog:
             for f in sorted(p.glob("*.txt")):
                 if not f.name.startswith("."):
                     text = f.read_text(encoding="utf-8-sig", errors="ignore")
-                    entries.append(parse_preset_id(f.name, text=text))
+                    entries.append(parse_preset_id(f.name, text=text, source_type="builtin"))
                     seen.add(f.name)
         if user_dir:
             up = Path(user_dir)
@@ -145,7 +278,7 @@ class PresetCatalog:
                 for f in sorted(up.glob("*.txt")):
                     if not f.name.startswith(".") and f.name not in seen:
                         text = f.read_text(encoding="utf-8-sig", errors="ignore")
-                        entries.append(parse_preset_id(f.name, text=text))
+                        entries.append(parse_preset_id(f.name, text=text, source_type="user"))
                         seen.add(f.name)
         return cls(entries)
 

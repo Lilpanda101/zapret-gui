@@ -67,3 +67,48 @@ def test_normalized_key_never_leaks_to_id():
         assert entry.id.endswith(".txt")
         # Ensure id is strictly the filesystem name
         assert (PRESETS_DIR / entry.id).is_file()
+
+
+def test_catalog_winws1_presets_loaded_without_loss():
+    winws1_dir = Path("zapret2/presets/winws1_builtin")
+    snapshot_file = Path("tests/snapshots/winws1_preset_ids.txt")
+    assert winws1_dir.is_dir()
+    assert snapshot_file.is_file()
+
+    catalog = PresetCatalog.load_from_directory(winws1_dir)
+    assert catalog.total_count == 165
+
+    expected_ids = set(snapshot_file.read_text(encoding="utf-8").strip().splitlines())
+    actual_ids = {p.id for p in catalog.all_presets()}
+    assert actual_ids == expected_ids
+
+
+def test_winws1_priority_families_parsed():
+    winws1_dir = Path("zapret2/presets/winws1_builtin")
+    catalog = PresetCatalog.load_from_directory(winws1_dir)
+
+    # Priority families presence
+    families = set(catalog.families.keys())
+    priority_sample = ["YTDisBystro_31", "YTDisBystro_34", "bolvan", "mgts1", "Rosmega", "warp1"]
+    for fam in priority_sample:
+        assert any(fam.lower() in f.lower() for f in families), f"Priority family {fam} missing from parsed catalog"
+
+    # Verify YTDisBystro has presets
+    yt_presets = [p for p in catalog.all_presets() if "ytdisbystro" in p.id.lower()]
+    assert len(yt_presets) >= 10
+
+
+def test_preset_metadata_enrichment():
+    catalog = PresetCatalog.load_from_directory(PRESETS_DIR)
+    
+    # Check that metadata fields exist on entries
+    alt2_entries = [p for p in catalog.all_presets() if "general alt2" in p.family.lower()]
+    assert alt2_entries
+    for entry in alt2_entries:
+        assert hasattr(entry, "author")
+        assert hasattr(entry, "stability")
+        assert hasattr(entry, "description")
+        assert hasattr(entry, "source")
+        assert entry.author is not None
+        assert entry.stability in ("recommended", "game", "stable", "stock", "experimental")
+

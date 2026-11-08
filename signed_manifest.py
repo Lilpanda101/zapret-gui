@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import bz2
 import json
 from collections.abc import Mapping
 
@@ -20,6 +21,79 @@ from ed25519 import verify_ed25519_signature
 
 PRODUCT = "zapret-gui"
 CHANNELS = ("dev", "stable")
+
+
+class BsdiffError(ValueError):
+    """Ошибка при наложении bsdiff дельта-патча."""
+    pass
+
+
+def _offtin(b: bytes) -> int:
+    return int.from_bytes(b, byteorder="little", signed=True)
+
+
+def _offtout(x: int) -> bytes:
+    return x.to_bytes(8, byteorder="little", signed=True)
+
+
+def apply_bsdiff(old: bytes, patch: bytes, expected_size: int | None = None) -> bytes:
+    """
+    Применяет дельта-патч в формате BSDIFF40 к байтам old.
+    Реализация на чистом Python без внешних бинарей.
+    """
+    if len(patch) < 32 or patch[:8] != b"BSDIFF40":
+        raise BsdiffError("Это не заплатка bsdiff (неверная сигнатура)")
+    ctrl_len = _offtin(patch[8:16])
+    diff_len = _offtin(patch[16:24])
+    new_size = _offtin(patch[24:32])
+
+    if ctrl_len < 0 or diff_len < 0 or new_size < 0 or 32 + ctrl_len + diff_len > len(patch):
+        raise BsdiffError("Заголовок заплатки bsdiff повреждён")
+    if expected_size is not None and new_size != expected_size:
+        raise BsdiffError(f"Размер после заплатки ({new_size}) не совпадает с ожидаемым ({expected_size})")
+
+    try:
+        ctrl_raw = bz2.decompress(patch[32 : 32 + ctrl_len])
+        diff_raw = bz2.decompress(patch[32 + ctrl_len : 32 + ctrl_len + diff_len])
+        extra_raw = bz2.decompress(patch[32 + ctrl_len + diff_len :])
+    except Exception as exc:
+        raise BsdiffError(f"Ошибка распаковки bz2 блоков заплатки: {exc}") from exc
+
+    if len(ctrl_raw) % 24 != 0:
+        raise BsdiffError("Блок управления заплатки bsdiff повреждён (длина не кратна 24)")
+
+    out = bytearray(new_size)
+    old_pos = 0
+    new_pos = 0
+    d_pos = 0
+    e_pos = 0
+    old_len = len(old)
+
+    for i in range(0, len(ctrl_raw), 24):
+        cp = _offtin(ctrl_raw[i : i + 8])
+        ex = _offtin(ctrl_raw[i + 8 : i + 16])
+        sk = _offtin(ctrl_raw[i + 16 : i + 24])
+
+        if cp < 0 or ex < 0:
+            raise BsdiffError("Отрицательное смещение в блоке управления bsdiff")
+        if new_pos + cp + ex > new_size:
+            raise BsdiffError("Заплатка bsdiff выходит за размер целевого файла")
+
+        for j in range(cp):
+            ob = old[old_pos + j] if 0 <= old_pos + j < old_len else 0
+            out[new_pos + j] = (ob + diff_raw[d_pos + j]) & 0xFF
+        new_pos += cp
+        old_pos += cp
+        d_pos += cp
+
+        out[new_pos : new_pos + ex] = extra_raw[e_pos : e_pos + ex]
+        new_pos += ex
+        e_pos += ex
+        old_pos += sk
+
+    if new_pos != new_size:
+        raise BsdiffError(f"Заплатка собрала {new_pos} байт вместо ожидаемых {new_size}")
+    return bytes(out)
 
 # Единственное место, где живут доверенные публичные ключи апдейтера.
 # Ключ в updater.py, main.py или тестах не дублировать.
@@ -124,6 +198,8 @@ __all__ = [
     "SIGNATURE_NAME",
     "TRUSTED_KEYS",
     "ManifestSignatureError",
+    "BsdiffError",
+    "apply_bsdiff",
     "decode_signature",
     "dumps_manifest",
     "load_signed_manifest",

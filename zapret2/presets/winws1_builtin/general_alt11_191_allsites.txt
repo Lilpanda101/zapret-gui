@@ -1,0 +1,34 @@
+# Preset: general_alt11_191_allsites
+# BuiltinVersion: 1.1
+# IconColor: #60cdff
+# Description: Imported from bat/general_alt11_191_allsites.txt
+
+--wf-tcp=80,443,444-65535,2053,2083,2087,2096,8443
+--wf-udp=443,444-65535,19294-19344,50000-50100
+
+--comment=Все сайты (айпи)
+--filter-tcp=80,443-65535
+--ipset-exclude=lists/ipset-ru.txt
+--ipset-exclude=lists/ipset-dns.txt
+--ipset-exclude=lists/ipset-exclude.txt
+--dpi-desync=fake,multisplit
+--dpi-desync-split-seqovl=654
+--dpi-desync-split-pos=1
+--dpi-desync-fooling=ts
+--dpi-desync-repeats=8
+--dpi-desync-split-seqovl-pattern=fake/tls_clienthello_max_ru.bin
+--dpi-desync-fake-tls=fake/tls_clienthello_max_ru.bin
+
+--new
+
+--comment=Все сайты UDP (айпи)
+--filter-udp=443-65535
+--ipset-exclude=lists/ipset-ru.txt
+--ipset-exclude=lists/ipset-dns.txt
+--ipset-exclude=lists/ipset-exclude.txt
+--dpi-desync=fake
+--dpi-desync-autottl=2
+--dpi-desync-repeats=10
+--dpi-desync-any-protocol=1
+--dpi-desync-fake-unknown-udp=fake/quic_initial_www_google_com.bin
+--dpi-desync-cutoff=n2

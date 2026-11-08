@@ -1,0 +1,39 @@
+# Preset: original_bolvan_v2_badsum_3
+# BuiltinVersion: 1.0
+# IconColor: #60cdff
+# Description: Imported from bat/original_bolvan_v2_badsum_3.txt
+
+--wf-tcp=80,443
+
+# === zapret.moe ===
+--comment=zapret.moe
+--filter-tcp=443
+--hostlist=lists/zapret-moe.txt
+--dpi-desync=hostfakesplit
+--dpi-desync-repeats=4
+--dpi-desync-fooling=ts,md5sig
+--dpi-desync-hostfakesplit-mod=host=ozon.ru
+
+--new
+
+# === HTTP (порт 80) ===
+--filter-tcp=80
+--dpi-desync=fake,multisplit
+--dpi-desync-split-seqovl=2
+--dpi-desync-split-pos=1,midsld
+--dpi-desync-fake-http=0x0F0F0F0F
+--dpi-desync-fooling=md5sig
+--dup=2
+--dup-fooling=md5sig
+--dup-cutoff=n3
+
+# === HTTP (порт 80) ===
+
+--new
+
+--comment=Мои сайты
+--filter-tcp=80,443-65535
+--ipset=lists/ipset-all.txt
+--dpi-desync=fake,fakedsplit
+--dpi-desync-autottl=2
+--dpi-desync-fooling=badseq

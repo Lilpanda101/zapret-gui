@@ -22,6 +22,7 @@
 | **7** | **Обновления, целостность, журнал** | 🟢 Готово | `e82fa9b` | LogAnalyzer, SupportBundle (.tar.gz), install_integrity (fast наличие+размер, full SHA-256 с retry заблокированных файлов) |
 | **8** | **Telegram Proxy (сознательно не портировано)** | 🟢 Закрыто | — | Внешний tg-ws-proxy уже установлен и работает на системе, интеграция в GUI не требуется по решению владельца |
 | **10** | **Упаковка, релизы, документация** | 🟢 Готово | `530a4cc` | Arch PKGBUILD, FreeDesktop zapret-gui.desktop, systemd unit, install.sh и uninstall.sh (системный / opt и портативный режимы) |
+| **11** | **Паритет winws1, каталогов стратегий, профилей и дельта-обновлений** | 🟢 Готово | Текущий спринт | 165 winws1 пресетов (zapret2/presets/winws1_builtin), 876 стратегий (system/strategy_catalogs), шаблоны сервисных профилей (profile_manager.py), bsdiff дельта-апдейтер + rescue откат (updater.py), TLS 1.3 / QUIC Initial генератор фейков с Kyber (fake_generator.py), 479 passed тестов |
 
 ---
 
@@ -246,4 +247,9 @@
 | **8.1. Telegram Proxy (встроенный WSS)** | Не портирован в GUI (сознательное архитектурное решение: используется внешний tg-ws-proxy) | Решение владельца: внешний tg-ws-proxy уже установлен и работает | 🟢 Закрыто (сознательно не портировано) |
 | **9.1. Статические AST-стражи и CI пайплайн** | `tests/test_guards.py`, `.github/workflows/ci.yml` | `tests/test_guards.py` | 🟢 Готово |
 | **10.1. Пакеты, systemd unit, инсталляторы** | `packaging/PKGBUILD`, `install.sh`, `uninstall.sh`, `packaging/zapret-gui.desktop` | `tests/test_packaging.py` | 🟢 Готово |
+| **11.1. Набор пресетов winws1_builtin (165 шт.)** | `zapret2/presets/winws1_builtin/`, `tests/snapshots/winws1_preset_ids.txt` | `tests/test_preset_golden_ids.py::test_winws1_preset_catalog_ids_immutable`, `tests/test_preset_catalog.py::test_catalog_winws1_presets_loaded_without_loss` | 🟢 Готово |
+| **11.2. Каталоги стратегий winws1/winws2 с метаданными** | `system/strategy_catalogs/`, `catalog/preset_catalog.py:PresetEntry` (author, stability, description, source) | `tests/test_preset_catalog.py::test_preset_metadata_enrichment` | 🟢 Готово |
+| **11.3. Слой сервисных профилей поверх пресетов** | `profile_manager.py:ProfileManager`, `system/templates/all_profiles.txt`, `zapret2_ui.py` | `tests/test_profile_manager.py` | 🟢 Готово |
+| **11.4. Дельта-апдейтер bsdiff + rescue откат** | `updater.py:ZapretUpdater`, `signed_manifest.py:apply_bsdiff`, plan.json (Linux `keep_running`: engine.sh, nfqws, nfqws2, tpws, zapret2_core, zapret-watchdog; `preserve`: ~/.config/zapret-gui, config.json, presets, autohostlist.txt, custom_hosts.txt, hosts.txt, badsum_hosts.txt, exclude.txt), `RESCUE_DIR` | `test_updater.py::test_bsdiff_delta_apply_and_fallback`, `test_update_failure_with_rescue_rollback`, `test_build_update_plan_properties` | 🟢 Готово |
+| **11.5. Генератор TLS 1.3 и QUIC Initial фейков (Kyber)** | `fake_generator.py`, `fake/chrome_template.hex`, `fake/quic_chrome_template.hex` | `tests/test_fake_generator.py` | 🟢 Готово |
 

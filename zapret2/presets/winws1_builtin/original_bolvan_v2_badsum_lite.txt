@@ -1,0 +1,64 @@
+# Preset: original_bolvan_v2_badsum_lite
+# BuiltinVersion: 1.0
+# IconColor: #60cdff
+# Description: Imported from bat/original_bolvan_v2_badsum_lite.txt
+
+--wf-tcp=443
+--wf-udp=443,50000-50099
+
+# === zapret.moe ===
+--comment=zapret.moe
+--filter-tcp=443
+--hostlist=lists/zapret-moe.txt
+--dpi-desync=hostfakesplit
+--dpi-desync-repeats=4
+--dpi-desync-fooling=ts,md5sig
+--dpi-desync-hostfakesplit-mod=host=ozon.ru
+
+--new
+
+--filter-tcp=443
+--hostlist=lists/faceinsta.txt
+--dpi-desync=fake,multisplit
+--dpi-desync-split-pos=sld+1
+--dpi-desync-fake-tls=0x0F0F0E0F
+--dpi-desync-fake-tls=fake/tls_clienthello_14.bin
+--dpi-desync-fake-tls-mod=rnd,dupsid
+--dpi-desync-fooling=md5sig
+--dpi-desync-autottl
+--dup=2
+--dup-fooling=md5sig
+--dup-autottl
+--dup-cutoff=n3
+
+# === HTTPS ===
+
+--new
+
+--comment=Мои сайты
+--filter-tcp=80,443-65535
+--ipset=lists/ipset-all.txt
+--dpi-desync=fake,multidisorder
+--dpi-desync-split-pos=1,midsld
+--dpi-desync-repeats=6
+--dpi-desync-fooling=badseq
+
+--new
+
+--comment=YouTube · быстрый протокол QUIC
+--filter-udp=443
+--hostlist=lists/youtube.txt
+--dpi-desync=fake
+--dpi-desync-repeats=11
+--dpi-desync-fake-quic=fake/quic_initial_www_google_com.bin
+
+# === QUIC ===
+
+--new
+
+--filter-udp=50000-50099
+--dpi-desync=fake
+--dpi-desync-autottl
+--dup=2
+--dup-autottl
+--dup-cutoff=n3

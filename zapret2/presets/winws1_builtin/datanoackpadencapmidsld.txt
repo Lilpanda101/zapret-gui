@@ -1,0 +1,75 @@
+# Preset: datanoackpadencapmidsld
+# BuiltinVersion: 1.0
+# IconColor: #60cdff
+# Description: Imported from bat/datanoackpadencapmidsld.txt
+
+--wf-tcp=443
+--wf-udp=443,50000-59000
+
+# === zapret.moe ===
+--comment=zapret.moe
+--filter-tcp=443
+--hostlist=lists/zapret-moe.txt
+--dpi-desync=hostfakesplit
+--dpi-desync-repeats=4
+--dpi-desync-fooling=ts,md5sig
+--dpi-desync-hostfakesplit-mod=host=ozon.ru
+
+--new
+
+# === HTTPS ===
+--comment=Мои сайты
+--filter-tcp=80,443-65535
+--ipset=lists/ipset-all.txt
+--dpi-desync=fake,multisplit
+--dpi-desync-split-seqovl=1
+--dpi-desync-split-pos=1
+--dpi-desync-fake-tls=fake/tls_clienthello_vk_com.bin
+--dpi-desync-ttl=5
+
+--new
+
+--filter-udp=50000-59000
+--dpi-desync=fake
+--dpi-desync-any-protocol
+--dpi-desync-cutoff=d3
+--dpi-desync-repeats=6
+--dpi-desync-fake-quic=fake/quic_initial_www_google_com.bin
+
+# === HTTPS YouTube ===
+
+--new
+
+--filter-tcp=443
+--hostlist=lists/youtubeGV.txt
+--dpi-desync=split
+--dpi-desync-split-pos=1
+--dpi-desync-fooling=badseq
+--dpi-desync-repeats=10
+--dpi-desync-cutoff=d2
+--dpi-desync-ttl=4
+
+# === HTTPS YouTube ===
+
+--new
+
+--comment=YouTube · сайт и приложение
+--filter-tcp=80,443
+--hostlist=lists/youtube.txt
+--dpi-desync=fake,split2
+--dpi-desync-split-seqovl=625
+--dpi-desync-split-tls=sniext
+--dpi-desync-fake-tls=fake/tls_clienthello_vk_com.bin
+--dpi-desync-ttl=2
+
+# === QUIC YouTube ===
+
+--new
+
+--comment=Cloudflare TCP
+--filter-tcp=80,443-65535
+--ipset=lists/ipset-cloudflare.txt
+--dpi-desync=fake,fakeddisorder
+--dpi-desync-fooling=datanoack
+--dpi-desync-split-pos=midsld
+--dpi-desync-fake-tls-mod=rnd,rndsni,padencap

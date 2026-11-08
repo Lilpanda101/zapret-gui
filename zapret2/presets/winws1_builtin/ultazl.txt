@@ -1,0 +1,58 @@
+# Preset: ultazl
+# BuiltinVersion: 1.0
+# IconColor: #60cdff
+# Description: Imported from bat/ultazl.txt
+
+--wf-tcp=443
+--wf-udp=443,50000-50099
+
+# === zapret.moe ===
+--comment=zapret.moe
+--filter-tcp=443
+--hostlist=lists/zapret-moe.txt
+--dpi-desync=hostfakesplit
+--dpi-desync-repeats=4
+--dpi-desync-fooling=ts,md5sig
+--dpi-desync-hostfakesplit-mod=host=ozon.ru
+
+--new
+
+# === QUIC YouTube ===
+--filter-udp=443
+--hostlist=lists/youtubeQ.txt
+--dpi-desync=fake
+--dpi-desync-fake-quic=fake/quic_1.bin
+--dpi-desync-repeats=4
+
+# === HTTPS YouTube ===
+
+--new
+
+--filter-tcp=443
+--hostlist=lists/youtubeGV.txt
+--dpi-desync=fakedsplit
+--dpi-desync-split-pos=1
+--dpi-desync-fooling=badseq
+--dpi-desync-repeats=10
+--dpi-desync-ttl=4
+
+# === HTTPS YouTube ===
+
+--new
+
+--comment=Мои сайты
+--filter-tcp=80,443-65535
+--ipset=lists/ipset-all.txt
+--dpi-desync=fake,multisplit
+--dpi-desync-split-seqovl=2
+--dpi-desync-split-pos=3
+--dpi-desync-fake-tls=fake/tls_clienthello_2.bin
+--dpi-desync-ttl=3
+
+--new
+
+--filter-udp=50000-50099
+--dpi-desync=fake
+--dpi-desync-any-protocol
+--dpi-desync-cutoff=d2
+--dpi-desync-fake-quic=fake/quic_1.bin

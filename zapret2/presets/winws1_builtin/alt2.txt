@@ -1,0 +1,37 @@
+--new
+
+--comment=Cloudflare TCP
+--filter-tcp=80,443-65535
+--ipset=lists/ipset-cloudflare.txt
+--dpi-desync=fake,split2
+--dpi-desync-autottl=2
+--dpi-desync-fooling=md5sig
+
+--new
+
+--filter-tcp=443
+--ipset-exclude=lists/ipset-ru.txt
+--ipset-exclude=lists/ipset-dns.txt
+--ipset-exclude=lists/ipset-exclude.txt
+--dpi-desync=split2
+--dpi-desync-split-seqovl=652
+--dpi-desync-split-pos=2
+--dpi-desync-split-seqovl-pattern=fake/tls_clienthello_www_google_com.bin
+
+--new
+
+--filter-tcp=6695-6705
+--dpi-desync=fake,split2
+--dpi-desync-repeats=8
+--dpi-desync-fooling=md5sig
+--dpi-desync-autottl=2
+--dpi-desync-fake-tls=fake/tls_clienthello_www_google_com.bin
+
+--new
+
+--comment=Cloudflare UDP
+--filter-udp=443-65535
+--ipset=lists/ipset-cloudflare.txt
+--dpi-desync=fake
+--dpi-desync-repeats=6
+--dpi-desync-fake-quic=fake/quic_initial_www_google_com.bin

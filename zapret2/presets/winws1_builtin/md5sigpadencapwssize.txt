@@ -1,0 +1,29 @@
+--new
+
+--filter-udp=50000-59000
+--dpi-desync=fake
+--dpi-desync-any-protocol
+--dpi-desync-cutoff=d3
+--dpi-desync-repeats=6
+--dpi-desync-fake-quic=fake/quic_initial_www_google_com.bin
+
+# === QUIC YouTube ===
+
+--new
+
+--filter-udp=443
+--hostlist=lists/youtubeQ.txt
+--dpi-desync=fake
+--dpi-desync-repeats=11
+--dpi-desync-fake-quic=fake/quic_initial_www_google_com.bin
+
+# === HTTPS ===
+
+--new
+
+--filter-tcp=443
+--dpi-desync=fake
+--dpi-desync-fooling=md5sig
+--wssize
+1:6
+--dpi-desync-fake-tls-mod=rnd,rndsni,padencap

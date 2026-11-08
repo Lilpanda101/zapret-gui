@@ -26,6 +26,7 @@ except Exception:
 
 import zapret2_core as core
 from catalog.preset_catalog import PresetCatalog, parse_preset_id
+from profile_manager import ProfileManager
 
 
 FILTER_CATEGORIES = [
@@ -427,6 +428,16 @@ class Zapret2Page:
         scroller.add(view)
         profile_card.pack_start(scroller, True, True, 0)
 
+        # Слой шаблонов профилей по сервисам
+        self.tpl_manager = ProfileManager.load()
+        tpl_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.combo_service_template = Gtk.ComboBoxText()
+        self.combo_service_template.set_can_focus(True)
+        self._populate_service_templates()
+        tpl_row.pack_start(self.combo_service_template, True, True, 0)
+        self._button(tpl_row, "+ Добавить сервис в пресет", self.add_service_profile)
+        profile_card.pack_start(tpl_row, False, False, 0)
+
         edit_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self._button(edit_actions, "Сохранить профиль", self.save_profile, True)
         self._button(edit_actions, "Сохранить как свой пресет...", self.save_as_user_preset)
@@ -552,10 +563,26 @@ class Zapret2Page:
             self.document = core.PresetDocument.parse(core.load_preset(preset_id))
             self.refresh_profiles(0)
             custom = (core.USER_PRESETS / Path(preset_id).name).is_file()
-            self.summary.set_text(
+            base_info = (
                 f"Профилей: {len(self.document.profiles)}. "
                 + ("Пользовательская копия." if custom else "Встроенный пресет, правки создадут копию.")
             )
+
+            entry = self.catalog.get(preset_id) if hasattr(self, "catalog") and self.catalog else None
+            meta_parts = []
+            if entry and entry.author:
+                meta_parts.append(f"Автор: {entry.author}")
+            if entry and entry.stability:
+                meta_parts.append(f"Статус: {entry.stability}")
+            if entry and entry.source:
+                meta_parts.append(f"Источник: {entry.source}")
+
+            if meta_parts:
+                base_info += f"\n{'  •  '.join(meta_parts)}"
+            if entry and entry.description:
+                base_info += f"\nОписание: {entry.description}"
+
+            self.summary.set_text(base_info)
             # Отображение баннера для игровых пресетов
             is_game = (
                 "(game filter)" in preset_id.casefold()
@@ -590,6 +617,31 @@ class Zapret2Page:
         self.buffer.set_text(self.document.profile_text(index))
         self._is_dirty = False
         self._loading = False
+
+    def _populate_service_templates(self):
+        if not hasattr(self, "combo_service_template"):
+            return
+        self.combo_service_template.remove_all()
+        templates = self.tpl_manager.templates if hasattr(self, "tpl_manager") and self.tpl_manager else []
+        for tpl in templates:
+            label = f"[{tpl.category}] {tpl.name}"
+            self.combo_service_template.append(tpl.id, label)
+        if templates:
+            self.combo_service_template.set_active(0)
+
+    def add_service_profile(self, _=None):
+        if not self.document:
+            return
+        active_id = self.combo_service_template.get_active_id()
+        if not active_id:
+            return
+        tpl = self.tpl_manager.get(active_id)
+        if not tpl:
+            return
+        self.document = self.tpl_manager.attach_to_preset_doc(self.document, tpl)
+        self._save_document()
+        self.refresh_profiles(len(self.document.profiles) - 1)
+        self.summary.set_text(f"Сервисный профиль '{tpl.name}' успешно добавлен в текущий пресет.")
 
     def _on_buffer_changed(self, _):
         if not self._loading:
@@ -717,7 +769,9 @@ class Zapret2Page:
                 self.app.show_dialog("Ошибка сохранения", str(exc))
 
     def _on_ed_search_changed(self, entry):
-        pass
+        if entry.get_text():
+            self.buffer.place_cursor(self.buffer.get_start_iter())
+            self._find_next()
 
     def _find_next(self, _=None):
         query = self.ed_search_entry.get_text()

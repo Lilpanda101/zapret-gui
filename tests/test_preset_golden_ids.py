@@ -5,6 +5,9 @@ import pytest
 PRESETS_DIR = Path("zapret2/presets/winws2_builtin")
 SNAPSHOT_FILE = Path("tests/snapshots/preset_ids.txt")
 
+WINWS1_PRESETS_DIR = Path("zapret2/presets/winws1_builtin")
+WINWS1_SNAPSHOT_FILE = Path("tests/snapshots/winws1_preset_ids.txt")
+
 
 def test_preset_catalog_ids_immutable():
     """
@@ -42,3 +45,40 @@ def test_preset_catalog_ids_immutable():
     for pid in actual_ids:
         assert pid.endswith(".txt"), f"Preset ID must end with .txt: {pid}"
         assert "/" not in pid and "\\" not in pid, f"Preset ID must be a basename: {pid}"
+
+
+def test_winws1_preset_catalog_ids_immutable():
+    """
+    Bidirectional golden snapshot test for winws1 preset IDs.
+    Guarantees:
+    1. Exactly 165 winws1 preset IDs exist (excluding discord/telegram).
+    2. No preset ID is deleted or renamed.
+    3. Every ID is a valid .txt filename.
+    """
+    assert WINWS1_SNAPSHOT_FILE.is_file(), f"Snapshot file {WINWS1_SNAPSHOT_FILE} missing!"
+
+    raw_expected = WINWS1_SNAPSHOT_FILE.read_text(encoding="utf-8").strip().splitlines()
+    expected_ids = set(line.strip() for line in raw_expected if line.strip())
+
+    assert len(expected_ids) == 165, f"Expected exactly 165 winws1 preset IDs, found {len(expected_ids)}"
+    assert WINWS1_PRESETS_DIR.is_dir(), f"Winws1 presets directory {WINWS1_PRESETS_DIR} missing!"
+
+    actual_files = [f.name for f in WINWS1_PRESETS_DIR.iterdir() if f.is_file() and not f.name.startswith(".")]
+    actual_ids = set(actual_files)
+
+    missing = expected_ids - actual_ids
+    extra = actual_ids - expected_ids
+
+    error_msgs = []
+    if missing:
+        error_msgs.append(f"Missing {len(missing)} winws1 preset(s):\n  " + "\n  ".join(sorted(missing)))
+    if extra:
+        error_msgs.append(f"Extra {len(extra)} unexpected winws1 preset(s):\n  " + "\n  ".join(sorted(extra)))
+
+    assert not error_msgs, "\n\n".join(error_msgs)
+    assert len(actual_ids) == 165, f"Expected 165 winws1 presets, got {len(actual_ids)}"
+
+    for pid in actual_ids:
+        assert pid.endswith(".txt"), f"Preset ID must end with .txt: {pid}"
+        assert "/" not in pid and "\\" not in pid, f"Preset ID must be a basename: {pid}"
+
