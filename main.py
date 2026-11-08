@@ -967,6 +967,11 @@ class Zapret2App(Gtk.Window):
     def load_css(self):
         theme_name = getattr(self, "theme", "dark")
         self.css_provider = load_theme(theme_name, getattr(self, "css_provider", None))
+        try:
+            self.reset_style()
+            self.queue_draw()
+        except Exception:
+            pass
 
     def set_theme(self, theme_name: str):
         if theme_name in VALID_THEMES:
@@ -1156,13 +1161,24 @@ class Zapret2App(Gtk.Window):
         def make_hero_card(badge_text: str, val_label: Gtk.Label, sub_text: str, on_click_tab: str):
             ev = Gtk.EventBox()
             ev.set_visible_window(False)
-            ev.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
-            ev.connect("enter-notify-event", lambda w, _: w.get_window().set_cursor(Gdk.Cursor.new_from_name(w.get_display(), "pointer")) if w.get_window() else None)
-            ev.connect("leave-notify-event", lambda w, _: w.get_window().set_cursor(None) if w.get_window() else None)
-            ev.connect("button-press-event", lambda *_: self.switch_to_tab(on_click_tab))
+            ev.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
 
             card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
             card.get_style_context().add_class("metric-tile")
+
+            def on_enter(w, _):
+                if w.get_window():
+                    w.get_window().set_cursor(Gdk.Cursor.new_from_name(w.get_display(), "pointer"))
+                card.set_state_flags(Gtk.StateFlags.PRELIGHT, False)
+
+            def on_leave(w, _):
+                if w.get_window():
+                    w.get_window().set_cursor(None)
+                card.unset_state_flags(Gtk.StateFlags.PRELIGHT)
+
+            ev.connect("enter-notify-event", on_enter)
+            ev.connect("leave-notify-event", on_leave)
+            ev.connect("button-press-event", lambda *_: self.switch_to_tab(on_click_tab))
 
             head_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
             lbl_title = Gtk.Label(label=badge_text, xalign=0)
@@ -1192,6 +1208,7 @@ class Zapret2App(Gtk.Window):
         initial_preset = os.path.splitext(os.path.basename(self.zapret2_preset))[0] if self.engine_mode == "nfqws2" else safe_preset_info["title"].split("(")[0].strip()
         self.top_tile_preset = Gtk.Label(label=initial_preset, xalign=0)
         ev1, self.top_card_preset = make_hero_card("ТЕКУЩИЙ ПРЕСЕТ", self.top_tile_preset, "📁 Выбрать стратегию", "zapret2")
+        self.top_card_preset.get_style_context().add_class("hero-card-accent")
         metric_grid.attach(ev1, 0, 0, 1, 1)
 
         # Tile 2: Profiles
@@ -1265,17 +1282,28 @@ class Zapret2App(Gtk.Window):
         def make_qa_card(title: str, sub: str, is_purple: bool, on_click):
             ev = Gtk.EventBox()
             ev.set_visible_window(False)
-            ev.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
-            ev.connect("enter-notify-event", lambda w, _: w.get_window().set_cursor(Gdk.Cursor.new_from_name(w.get_display(), "pointer")) if w.get_window() else None)
-            ev.connect("leave-notify-event", lambda w, _: w.get_window().set_cursor(None) if w.get_window() else None)
-            ev.connect("button-press-event", lambda *_: on_click())
+            ev.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
 
             b = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
             b.get_style_context().add_class("quick-action-card")
             if is_purple:
                 b.get_style_context().add_class("quick-action-purple")
 
-            t = Gtk.Label(label=f"<b>{title}</b>", use_markup=True, xalign=0)
+            def on_enter(w, _):
+                if w.get_window():
+                    w.get_window().set_cursor(Gdk.Cursor.new_from_name(w.get_display(), "pointer"))
+                b.set_state_flags(Gtk.StateFlags.PRELIGHT, False)
+
+            def on_leave(w, _):
+                if w.get_window():
+                    w.get_window().set_cursor(None)
+                b.unset_state_flags(Gtk.StateFlags.PRELIGHT)
+
+            ev.connect("enter-notify-event", on_enter)
+            ev.connect("leave-notify-event", on_leave)
+            ev.connect("button-press-event", lambda *_: on_click())
+
+            t = Gtk.Label(label=f"<b>{GLib.markup_escape_text(title)}</b>", use_markup=True, xalign=0)
             d = Gtk.Label(label=sub, xalign=0)
             d.get_style_context().add_class("page-subtitle")
             b.pack_start(t, False, False, 0)
@@ -1411,7 +1439,7 @@ class Zapret2App(Gtk.Window):
 
         # Warning Card
         warn_card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        warn_card.get_style_context().add_class("status-banner-inactive")
+        warn_card.get_style_context().add_class("warning-banner")
         warn_lbl = Gtk.Label(
             label="⚠️ <b>Внимание:</b> изменение этих параметров может влиять на стабильность обхода DPI на некоторых провайдерах",
             use_markup=True,
@@ -2401,7 +2429,7 @@ class Zapret2App(Gtk.Window):
             card.pack_start(ico_lbl, False, False, 0)
 
             info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-            t_lbl = Gtk.Label(label=f"<b>{s_title}</b>", use_markup=True, xalign=0)
+            t_lbl = Gtk.Label(label=f"<b>{GLib.markup_escape_text(s_title)}</b>", use_markup=True, xalign=0)
             d_lbl = Gtk.Label(label=s_desc, xalign=0)
             d_lbl.get_style_context().add_class("page-subtitle")
             info.pack_start(t_lbl, False, False, 0)

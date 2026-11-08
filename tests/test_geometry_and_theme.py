@@ -251,6 +251,13 @@ class TestThemeManager:
         updated = load_theme("light", gtk_css_provider=provider)
         assert updated is provider
 
+    def test_theme_css_syntax_validity_in_gtk(self):
+        """Ensure Gtk.CssProvider parses theme CSS without throwing any syntax/color errors."""
+        for theme in ("dark", "light"):
+            css = get_theme_css(theme)
+            provider = Gtk.CssProvider()
+            provider.load_from_data(css.encode("utf-8"))
+
 
 # ==============================================================================
 # 3. A11Y & SHORTCUTS TESTS

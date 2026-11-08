@@ -116,10 +116,12 @@ class StatusPresenter:
 
         if getattr(self.app, "top_card_preset", None) is not None:
             ctx = self.app.top_card_preset.get_style_context()
-            if data.banner_active:
+            if not ctx.has_class("hero-card-accent"):
                 ctx.add_class("hero-card-accent")
+            if data.banner_active:
+                ctx.add_class("hero-card-active")
             else:
-                ctx.remove_class("hero-card-accent")
+                ctx.remove_class("hero-card-active")
 
         if getattr(self.app, "post_status_message", None) is not None:
             if data.state == "ACTIVE":

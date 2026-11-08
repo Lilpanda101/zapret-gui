@@ -669,7 +669,7 @@ class Zapret2Page:
                 continue
 
             expander = Gtk.Expander()
-            exp_header = f"<b>{cat_name}</b> <span color='#8e8e8e'>({len(entries)})</span>"
+            exp_header = f"<b>{GLib.markup_escape_text(cat_name)}</b> <span color='#8e8e8e'>({len(entries)})</span>"
             lbl = Gtk.Label()
             lbl.set_markup(exp_header)
             expander.set_label_widget(lbl)

@@ -62,7 +62,7 @@ def get_system_theme() -> str:
             val = res.stdout.strip().strip("'\"")
             if "prefer-dark" in val:
                 return "dark"
-            if "prefer-light" in val or "default" in val:
+            if "prefer-light" in val:
                 return "light"
     except Exception:
         pass
@@ -451,8 +451,17 @@ scrolledwindow viewport {
 
 /* Windows Fluent 2 Enhancements */
 .hero-card-accent {
-    background: linear-gradient(135deg, rgba(0, 162, 237, 0.14) 0%, #252525 100%) !important;
-    border: 1px solid rgba(0, 162, 237, 0.55) !important;
+    background: linear-gradient(135deg, rgba(0, 173, 181, 0.22) 0%, #1e2d33 100%);
+    border: 1px solid #00adb5;
+}
+.hero-card-accent:hover {
+    background: linear-gradient(135deg, rgba(0, 173, 181, 0.30) 0%, #24353c 100%);
+    border-color: #33d6de;
+}
+.hero-card-accent.hero-card-active, .hero-card-active {
+    background: linear-gradient(135deg, rgba(0, 173, 181, 0.30) 0%, #20353c 100%);
+    border-color: #33d6de;
+    box-shadow: 0 0 12px rgba(0, 173, 181, 0.25);
 }
 
 .quick-action-card {
@@ -468,12 +477,12 @@ scrolledwindow viewport {
 }
 
 .quick-action-purple {
-    background: linear-gradient(135deg, rgba(147, 51, 234, 0.18) 0%, #252525 100%);
-    border: 1px solid rgba(147, 51, 234, 0.45);
+    background: linear-gradient(135deg, rgba(147, 51, 234, 0.22) 0%, #271f30 100%);
+    border: 1px solid rgba(168, 85, 247, 0.50);
 }
 .quick-action-purple:hover {
-    background: linear-gradient(135deg, rgba(147, 51, 234, 0.28) 0%, #2d2d2d 100%);
-    border-color: rgba(147, 51, 234, 0.65);
+    background: linear-gradient(135deg, rgba(147, 51, 234, 0.32) 0%, #30243d 100%);
+    border-color: rgba(168, 85, 247, 0.70);
 }
 
 .badge-free {
@@ -501,9 +510,9 @@ scrolledwindow viewport {
     color: #ffffff;
 }
 .preset-chip-active {
-    background-color: rgba(0, 162, 237, 0.18) !important;
-    border: 1px solid #00a2ed !important;
-    color: #ffffff !important;
+    background-color: rgba(0, 173, 181, 0.20);
+    border: 1px solid #00adb5;
+    color: #ffffff;
     font-weight: 600;
 }
 
@@ -524,6 +533,14 @@ scrolledwindow viewport {
     border: 1px solid #2d2d2d;
     border-radius: 8px;
     padding: 10px 14px;
+}
+
+.warning-banner {
+    background-color: rgba(227, 179, 65, 0.12);
+    border: 1px solid rgba(227, 179, 65, 0.35);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: #fbbf24;
 }
 
 /* ComboBox */
@@ -910,34 +927,44 @@ scrolledwindow viewport {
 
 /* Windows Fluent 2 Enhancements */
 .hero-card-accent {
-    background: linear-gradient(135deg, rgba(0, 162, 237, 0.14) 0%, #252525 100%) !important;
-    border: 1px solid rgba(0, 162, 237, 0.55) !important;
+    background: linear-gradient(135deg, rgba(2, 132, 199, 0.12) 0%, #ffffff 100%);
+    border: 1px solid #0284c7;
+}
+.hero-card-accent:hover {
+    background: linear-gradient(135deg, rgba(2, 132, 199, 0.18) 0%, #f0f9ff 100%);
+    border-color: #0369a1;
+}
+.hero-card-accent.hero-card-active, .hero-card-active {
+    background: linear-gradient(135deg, rgba(2, 132, 199, 0.20) 0%, #e0f2fe 100%);
+    border-color: #0284c7;
+    box-shadow: 0 0 10px rgba(2, 132, 199, 0.20);
 }
 
 .quick-action-card {
-    background-color: #252525;
-    border: 1px solid #363636;
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
     border-radius: 8px;
     padding: 12px 14px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
     transition: all 120ms ease;
 }
 .quick-action-card:hover {
-    background-color: #2f2f2f;
-    border-color: #484848;
+    background-color: #f8fafc;
+    border-color: #cbd5e1;
 }
 
 .quick-action-purple {
-    background: linear-gradient(135deg, rgba(147, 51, 234, 0.18) 0%, #252525 100%);
-    border: 1px solid rgba(147, 51, 234, 0.45);
+    background: linear-gradient(135deg, rgba(147, 51, 234, 0.08) 0%, #ffffff 100%);
+    border: 1px solid rgba(147, 51, 234, 0.35);
 }
 .quick-action-purple:hover {
-    background: linear-gradient(135deg, rgba(147, 51, 234, 0.28) 0%, #2d2d2d 100%);
-    border-color: rgba(147, 51, 234, 0.65);
+    background: linear-gradient(135deg, rgba(147, 51, 234, 0.15) 0%, #faf5ff 100%);
+    border-color: rgba(147, 51, 234, 0.55);
 }
 
 .badge-free {
-    background-color: #333333;
-    color: #b5b5b5;
+    background-color: #e2e8f0;
+    color: #475569;
     font-size: 10px;
     font-weight: 700;
     border-radius: 4px;
@@ -946,43 +973,53 @@ scrolledwindow viewport {
 }
 
 .preset-chip {
-    background-color: #262626;
-    border: 1px solid #363636;
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
     border-radius: 6px;
     padding: 6px 12px;
-    color: #d0d0d0;
+    color: #334155;
     font-size: 12px;
     transition: all 120ms ease;
 }
 .preset-chip:hover {
-    background-color: #323232;
-    border-color: #4a4a4a;
-    color: #ffffff;
+    background-color: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #0f172a;
 }
 .preset-chip-active {
-    background-color: rgba(0, 162, 237, 0.18) !important;
-    border: 1px solid #00a2ed !important;
-    color: #ffffff !important;
+    background-color: rgba(2, 132, 199, 0.14);
+    border: 1px solid #0284c7;
+    color: #0284c7;
     font-weight: 600;
 }
 
 .service-tile {
-    background-color: #252525;
-    border: 1px solid #343434;
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
     border-radius: 8px;
     padding: 10px 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
     transition: all 120ms ease;
 }
 .service-tile:hover {
-    background-color: #2c2c2c;
-    border-color: #444444;
+    background-color: #f8fafc;
+    border-color: #cbd5e1;
 }
 
 .last-msg-card {
-    background-color: #222222;
-    border: 1px solid #2d2d2d;
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
     border-radius: 8px;
     padding: 10px 14px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+.warning-banner {
+    background-color: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.40);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: #b45309;
 }
 
 /* ComboBox */
@@ -1237,44 +1274,119 @@ scrolledwindow undershoot, scrolledwindow overshoot {
 
 /* Cards */
 .fluent-card {
-    background-color: #282828;
-    border: 1px solid #2f2f2f;
+    background-color: #252525;
+    border: 1px solid #333333;
     border-radius: 10px;
-    padding: 18px 20px;
+    padding: 16px 18px;
     margin-bottom: 12px;
     box-shadow: none;
 }
 .fluent-card:hover {
-    border-color: #3a3a3a;
+    border-color: #444444;
 }
 .fluent-tile {
-    background-color: #242424;
-    border: 1px solid #2f2f2f;
-    border-radius: 10px;
+    background-color: #252525;
+    border: 1px solid #333333;
+    border-radius: 8px;
     padding: 12px 14px;
 }
 .fluent-tile:hover {
     background-color: #2c2c2c;
-    border-color: #3a3a3a;
+    border-color: #444444;
 }
 .fluent-setting-row {
-    background-color: #282828;
-    border: 1px solid #2f2f2f;
-    border-radius: 10px;
-    padding: 16px 18px;
-    margin-bottom: 8px;
+    background-color: #252525;
+    border: 1px solid #333333;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 6px;
+    transition: all 120ms ease;
 }
 .fluent-setting-row:hover {
-    background-color: #2e2e2e;
-    border-color: #3a3a3a;
+    background-color: #2c2c2c;
+    border-color: #444444;
 }
 .setting-icon-box {
-    background-color: rgba(0, 200, 208, 0.10);
-    border-radius: 9px;
+    background-color: rgba(0, 200, 208, 0.12);
+    border-radius: 8px;
     padding: 7px 9px;
 }
 .setting-icon-image {
     color: #33d6de;
+}
+
+.metric-tile {
+    background-color: #252525;
+    border: 1px solid #333333;
+    border-radius: 8px;
+    padding: 12px 14px;
+    transition: all 120ms ease;
+}
+.metric-tile:hover {
+    background-color: #2b2b2b;
+    border-color: #444444;
+}
+
+.hero-card-accent {
+    background: linear-gradient(135deg, rgba(0, 173, 181, 0.22) 0%, #1e2d33 100%);
+    border: 1px solid #00adb5;
+}
+.hero-card-accent:hover {
+    background: linear-gradient(135deg, rgba(0, 173, 181, 0.30) 0%, #24353c 100%);
+    border-color: #33d6de;
+}
+.hero-card-accent.hero-card-active, .hero-card-active {
+    background: linear-gradient(135deg, rgba(0, 173, 181, 0.30) 0%, #20353c 100%);
+    border-color: #33d6de;
+    box-shadow: 0 0 12px rgba(0, 173, 181, 0.25);
+}
+
+.quick-action-card {
+    background-color: #252525;
+    border: 1px solid #333333;
+    border-radius: 8px;
+    padding: 12px 14px;
+    transition: all 120ms ease;
+}
+.quick-action-card:hover {
+    background-color: #2d2d2d;
+    border-color: #484848;
+}
+
+.quick-action-purple {
+    background: linear-gradient(135deg, rgba(147, 51, 234, 0.22) 0%, #271f30 100%);
+    border: 1px solid rgba(168, 85, 247, 0.50);
+}
+.quick-action-purple:hover {
+    background: linear-gradient(135deg, rgba(147, 51, 234, 0.32) 0%, #30243d 100%);
+    border-color: rgba(168, 85, 247, 0.70);
+}
+
+.service-tile {
+    background-color: #252525;
+    border: 1px solid #333333;
+    border-radius: 8px;
+    padding: 10px 12px;
+    transition: all 120ms ease;
+}
+.service-tile:hover {
+    background-color: #2c2c2c;
+    border-color: #444444;
+}
+
+.last-msg-card {
+    background-color: #222222;
+    border: 1px solid #2e2e2e;
+    border-radius: 8px;
+    padding: 10px 14px;
+}
+
+.warning-banner {
+    background-color: rgba(227, 179, 65, 0.12);
+    border: 1px solid rgba(227, 179, 65, 0.35);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: #fbbf24;
 }
 
 /* Typography */
@@ -1304,19 +1416,18 @@ scrolledwindow undershoot, scrolledwindow overshoot {
     font-size: 14px;
 }
 
-/* Status banner: flat surface with a quiet accent, no glow */
+/* Status banner: contoured Fluent card with state-specific accent */
 .status-banner-active {
-    background-color: #282828;
-    background-image: none;
-    border: 1px solid #2f2f2f;
+    background: linear-gradient(135deg, rgba(46, 160, 67, 0.16) 0%, #242926 100%);
+    border: 1px solid rgba(46, 160, 67, 0.50);
     border-radius: 10px;
     padding: 18px 20px;
     box-shadow: none;
 }
 .status-banner-inactive {
-    background-color: #282828;
+    background-color: #252525;
     background-image: none;
-    border: 1px solid #2f2f2f;
+    border: 1px solid #333333;
     border-radius: 10px;
     padding: 18px 20px;
     box-shadow: none;
@@ -1691,23 +1802,33 @@ scrolledwindow undershoot, scrolledwindow overshoot {
 .fluent-card {
     background-color: #ffffff;
     border: 1px solid #e2e8f2;
-    border-radius: 13px;
-    padding: 18px 20px;
+    border-radius: 10px;
+    padding: 16px 18px;
     margin-bottom: 12px;
-    box-shadow: none;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.fluent-card:hover {
+    border-color: #cbd5e4;
 }
 .fluent-tile {
-    background-color: #fbfcfe;
+    background-color: #ffffff;
     border: 1px solid #e2e8f2;
-    border-radius: 11px;
+    border-radius: 8px;
     padding: 12px 14px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+.fluent-tile:hover {
+    background-color: #f8fafd;
+    border-color: #cbd5e4;
 }
 .fluent-setting-row {
     background-color: #ffffff;
     border: 1px solid #e2e8f2;
-    border-radius: 12px;
+    border-radius: 8px;
     padding: 13px 16px;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+    transition: all 120ms ease;
 }
 .fluent-setting-row:hover {
     background-color: #f8fafd;
@@ -1715,11 +1836,89 @@ scrolledwindow undershoot, scrolledwindow overshoot {
 }
 .setting-icon-box {
     background-color: rgba(47, 111, 237, 0.08);
-    border-radius: 9px;
+    border-radius: 8px;
     padding: 7px 9px;
 }
 .setting-icon-image {
     color: #2f6fed;
+}
+
+.metric-tile {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f2;
+    border-radius: 8px;
+    padding: 12px 14px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    transition: all 120ms ease;
+}
+.metric-tile:hover {
+    background-color: #f8fafc;
+    border-color: #cbd5e1;
+}
+
+.hero-card-accent {
+    background: linear-gradient(135deg, rgba(2, 132, 199, 0.12) 0%, #ffffff 100%);
+    border: 1px solid #0284c7;
+}
+.hero-card-accent:hover {
+    background: linear-gradient(135deg, rgba(2, 132, 199, 0.18) 0%, #f0f9ff 100%);
+    border-color: #0369a1;
+}
+.hero-card-accent.hero-card-active, .hero-card-active {
+    background: linear-gradient(135deg, rgba(2, 132, 199, 0.20) 0%, #e0f2fe 100%);
+    border-color: #0284c7;
+    box-shadow: 0 0 10px rgba(2, 132, 199, 0.20);
+}
+
+.quick-action-card {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f2;
+    border-radius: 8px;
+    padding: 12px 14px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    transition: all 120ms ease;
+}
+.quick-action-card:hover {
+    background-color: #f8fafc;
+    border-color: #cbd5e1;
+}
+
+.quick-action-purple {
+    background: linear-gradient(135deg, rgba(147, 51, 234, 0.08) 0%, #ffffff 100%);
+    border: 1px solid rgba(147, 51, 234, 0.35);
+}
+.quick-action-purple:hover {
+    background: linear-gradient(135deg, rgba(147, 51, 234, 0.15) 0%, #faf5ff 100%);
+    border-color: rgba(147, 51, 234, 0.55);
+}
+
+.service-tile {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f2;
+    border-radius: 8px;
+    padding: 10px 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+    transition: all 120ms ease;
+}
+.service-tile:hover {
+    background-color: #f8fafc;
+    border-color: #cbd5e1;
+}
+
+.last-msg-card {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f2;
+    border-radius: 8px;
+    padding: 10px 14px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+.warning-banner {
+    background-color: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.40);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: #b45309;
 }
 
 /* Typography */
