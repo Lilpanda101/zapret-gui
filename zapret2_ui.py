@@ -207,6 +207,24 @@ class Zapret2Page:
         selector = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         selector.get_style_context().add_class("fluent-card")
 
+        # Верхний тулбар действий "Мои пресеты" (стиль Windows Zapret 2)
+        top_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        lbl_head = Gtk.Label()
+        lbl_head.set_markup("<span font='13' weight='bold'>● Мои пресеты</span>")
+        top_bar.pack_start(lbl_head, False, False, 0)
+
+        self._button(top_bar, "＋", self._create_new_preset)
+        self._button(top_bar, "Импорт", self.import_preset)
+        self._button(top_bar, "📁 Папка", self._open_presets_folder)
+        self._button(top_bar, "↺ Сброс", self._reset_to_builtin)
+        self._button(top_bar, "❓", self._show_presets_help)
+
+        self.search = Gtk.SearchEntry()
+        self.search.set_placeholder_text("Поиск пресетов по имени...")
+        self.search.connect("search-changed", self.refresh_catalog)
+        top_bar.pack_end(self.search, False, False, 0)
+        selector.pack_start(top_bar, False, False, 0)
+
         # Панель кнопок-фильтров в стиле fluent-pills
         filter_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         first_radio = None
@@ -227,12 +245,8 @@ class Zapret2Page:
             self.category_buttons["all"].set_active(True)
         selector.pack_start(filter_box, False, False, 0)
 
-        # Поиск и выпадающий список пресетов
+        # Выпадающий список пресетов (скрыт/свернут под сетку)
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        self.search = Gtk.SearchEntry()
-        self.search.set_placeholder_text("Найти пресет...")
-        self.search.connect("search-changed", self.refresh_catalog)
-        row.pack_start(self.search, False, False, 0)
         self.preset_combo = Gtk.ComboBoxText()
         self.preset_combo.set_can_focus(True)
         self.preset_combo.connect("changed", self.on_preset_selected)
@@ -253,6 +267,10 @@ class Zapret2Page:
         self.lbl_catalog_stats.get_style_context().add_class("page-subtitle")
         ver_row.pack_start(self.lbl_catalog_stats, False, False, 0)
         selector.pack_start(ver_row, False, False, 0)
+
+        # Сетка пресетов плитками по категориям (Grid Chips)
+        self.grid_container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        selector.pack_start(self.grid_container, False, False, 4)
 
         # Заметный информационный баннер для игровых пресетов (game filter)
         self.game_banner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -545,6 +563,7 @@ class Zapret2Page:
         self._loading = False
         if items:
             self.load_preset(self.preset_combo.get_active_id())
+            self._render_preset_grid(items, self.preset_combo.get_active_id())
         else:
             self.preset_id = None
             self.document = None
@@ -554,6 +573,155 @@ class Zapret2Page:
                 self.summary.set_text("Пресеты не найдены по заданному фильтру.")
             if hasattr(self, "game_banner") and self.game_banner:
                 self.game_banner.set_visible(False)
+            if hasattr(self, "grid_container") and self.grid_container:
+                for child in self.grid_container.get_children():
+                    self.grid_container.remove(child)
+
+    def _open_presets_folder(self, _=None):
+        presets_dir = core.USER_PRESETS
+        presets_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            subprocess.Popen(["xdg-open", str(presets_dir)])
+        except Exception as e:
+            if hasattr(self.app, "show_dialog"):
+                self.app.show_dialog("Ошибка", f"Не удалось открыть папку: {e}")
+
+    def _create_new_preset(self, _=None):
+        name = "custom_preset.txt"
+        path = core.USER_PRESETS / name
+        counter = 1
+        while path.exists():
+            name = f"custom_preset_{counter}.txt"
+            path = core.USER_PRESETS / name
+            counter += 1
+        template = "# Preset: Custom\n# Description: Пользовательский пресет\n\n--filter-tcp=80,443\n--lua-desync=fake\n"
+        path.write_text(template, encoding="utf-8")
+        self.invalidate_catalog()
+        self.refresh_catalog()
+        self.preset_combo.set_active_id(name)
+        if hasattr(self.app, "show_dialog"):
+            self.app.show_dialog("Новый пресет", f"Создан пресет '{name}' в пользовательской папке.")
+
+    def _reset_to_builtin(self, _=None):
+        if not self.preset_id:
+            return
+        clean_name = Path(self.preset_id).name
+        user_file = core.USER_PRESETS / clean_name
+        if not user_file.is_file():
+            if hasattr(self.app, "show_dialog"):
+                self.app.show_dialog("Инфо", "Этот пресет уже является встроенным.")
+            return
+        core.reset_user_preset(clean_name)
+        self.invalidate_catalog()
+        self.refresh_catalog()
+        self.preset_combo.set_active_id(clean_name)
+        if hasattr(self.app, "show_dialog"):
+            self.app.show_dialog("Сброс", f"Пресет '{clean_name}' сброшен к встроенной версии.")
+
+    def _show_presets_help(self, _=None):
+        if hasattr(self.app, "show_dialog"):
+            self.app.show_dialog(
+                "О пресетах Zapret 2",
+                "Пресеты настраивают десинхронизацию пакетов для обхода DPI.\n\n"
+                "• Встроенные пресеты хранятся в системе и обновляются автоматически.\n"
+                "• При редактировании создается копия в ~/.config/zapret-gui/presets с приоритетом.\n"
+                "• Circular: адаптивные стратегии подбора параметров.\n"
+                "• Game filter: пресеты со строгой фильтрацией по портам для Discord Voice и онлайн-игр.\n"
+                "• Кнопка 'Сброс' удаляет пользовательские правки текущего пресета."
+            )
+
+    def _render_preset_grid(self, items, selected_id):
+        if not hasattr(self, "grid_container") or not self.grid_container:
+            return
+        for child in self.grid_container.get_children():
+            self.grid_container.remove(child)
+
+        self._chip_buttons = {}
+        cat_map = {
+            "ALL TCP & UDP": [],
+            "Game filter": [],
+            "Circular": [],
+            "1.10.3": [],
+            "1.9.9": [],
+            "Winws1 Legacy": [],
+            "Общие": [],
+        }
+
+        for entry in items:
+            name_lower = entry.id.casefold()
+            if entry.id.startswith("ALL TCP & UDP"):
+                cat_map["ALL TCP & UDP"].append(entry)
+            elif "circular" in entry.tags or "circular" in name_lower:
+                cat_map["Circular"].append(entry)
+            elif entry.game_filter or "game" in entry.tags or "(game filter)" in name_lower:
+                cat_map["Game filter"].append(entry)
+            elif "1.10.3" in entry.id:
+                cat_map["1.10.3"].append(entry)
+            elif "1.9.9" in entry.id:
+                cat_map["1.9.9"].append(entry)
+            elif "winws1" in getattr(entry, "source", "") or "winws1" in str(getattr(entry, "id", "")).lower():
+                cat_map["Winws1 Legacy"].append(entry)
+            else:
+                cat_map["Общие"].append(entry)
+
+        for cat_name, entries in cat_map.items():
+            if not entries:
+                continue
+
+            expander = Gtk.Expander()
+            exp_header = f"<b>{cat_name}</b> <span color='#8e8e8e'>({len(entries)})</span>"
+            lbl = Gtk.Label()
+            lbl.set_markup(exp_header)
+            expander.set_label_widget(lbl)
+            expander.set_expanded(True)
+
+            flow = Gtk.FlowBox()
+            flow.set_valign(Gtk.Align.START)
+            flow.set_max_children_per_line(8)
+            flow.set_selection_mode(Gtk.SelectionMode.NONE)
+            flow.set_column_spacing(6)
+            flow.set_row_spacing(6)
+            flow.set_homogeneous(True)
+
+            for entry in entries:
+                btn = Gtk.Button()
+                btn.get_style_context().add_class("preset-chip")
+                is_active = (entry.id == selected_id)
+                if is_active:
+                    btn.get_style_context().add_class("preset-chip-active")
+                    btn.set_label(f"✓ {entry.display_name}")
+                else:
+                    btn.set_label(f"📄 {entry.display_name}")
+
+                btn.connect("clicked", lambda _, eid=entry.id: self._on_chip_clicked(eid))
+                flow.add(btn)
+                self._chip_buttons[entry.id] = btn
+
+            expander.add(flow)
+            self.grid_container.pack_start(expander, False, False, 2)
+
+        self.grid_container.show_all()
+
+    def _on_chip_clicked(self, preset_id):
+        if hasattr(self, "preset_combo"):
+            self.preset_combo.set_active_id(preset_id)
+
+    def _update_chip_styles(self, active_id):
+        if not hasattr(self, "_chip_buttons"):
+            return
+        for eid, btn in self._chip_buttons.items():
+            if eid == active_id:
+                btn.get_style_context().add_class("preset-chip-active")
+                label = btn.get_label()
+                if not label.startswith("✓"):
+                    clean = label.replace("📄", "").replace("✓", "").strip()
+                    btn.set_label(f"✓ {clean}")
+            else:
+                btn.get_style_context().remove_class("preset-chip-active")
+                label = btn.get_label()
+                if label.startswith("✓"):
+                    clean = label.replace("📄", "").replace("✓", "").strip()
+                    btn.set_label(f"📄 {clean}")
 
     def load_preset(self, preset_id):
         if not preset_id:
@@ -674,7 +842,9 @@ class Zapret2Page:
                 combo.set_active_id(self.preset_id)
                 self._loading = False
                 return
-            self.load_preset(combo.get_active_id())
+            active_id = combo.get_active_id()
+            self.load_preset(active_id)
+            self._update_chip_styles(active_id)
 
     def on_profile_selected(self, combo):
         if not self._loading and combo.get_active_id() is not None:

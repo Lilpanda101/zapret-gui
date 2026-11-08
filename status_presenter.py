@@ -107,6 +107,28 @@ class StatusPresenter:
             ctx.remove_class("badge-bad")
             ctx.add_class(data.pill_badge_cls)
 
+        if getattr(self.app, "sidebar_status_dot", None) is not None:
+            ctx = self.app.sidebar_status_dot.get_style_context()
+            ctx.remove_class("badge-ok")
+            ctx.remove_class("badge-warn")
+            ctx.remove_class("badge-bad")
+            ctx.add_class(data.pill_badge_cls)
+
+        if getattr(self.app, "top_card_preset", None) is not None:
+            ctx = self.app.top_card_preset.get_style_context()
+            if data.banner_active:
+                ctx.add_class("hero-card-accent")
+            else:
+                ctx.remove_class("hero-card-accent")
+
+        if getattr(self.app, "post_status_message", None) is not None:
+            if data.state == "ACTIVE":
+                self.app.post_status_message("Обход DPI активен: пакеты десинхронизируются")
+            elif data.state == "NFQWS_ONLY":
+                self.app.post_status_message("NFQWS запущен, правила nftables не найдены")
+            else:
+                self.app.post_status_message("Обход DPI остановлен")
+
         if hasattr(self.app, "update_tray"):
             try:
                 self.app.update_tray(data.is_running)

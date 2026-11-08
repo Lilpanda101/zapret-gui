@@ -37,6 +37,10 @@ DEFAULT_CONFIG = {
     "healer_enabled": True,
     "minimize_to_tray": True,
     "onboarding_completed": False,
+    "block_gov_media": False,
+    "block_telemetry": False,
+    "enable_wssize": False,
+    "debug_log": False,
     "window_width": 1080,
     "window_height": 720,
     "window_maximized": False,
@@ -115,6 +119,10 @@ def migrate_config(data: dict) -> dict:
         "enable_auto_hostlist",
         "healer_enabled",
         "onboarding_completed",
+        "block_gov_media",
+        "block_telemetry",
+        "enable_wssize",
+        "debug_log",
     ):
         if bool_key in data:
             out[bool_key] = _safe_bool(data[bool_key], DEFAULT_CONFIG[bool_key])
@@ -146,7 +154,7 @@ def migrate_config(data: dict) -> dict:
     )
     valid_pages = (
         "dashboard", "presets", "profiles", "zapret2", "dpi_mode",
-        "monitor", "dns", "hosts", "updates", "blockcheck", "logs", "settings"
+        "monitor", "dns", "hosts", "updates", "blockcheck", "orchestra", "logs", "settings"
     )
     raw_page = data.get("last_page")
     if raw_page in valid_pages:

@@ -449,6 +449,83 @@ scrolledwindow viewport {
     background-color: transparent;
 }
 
+/* Windows Fluent 2 Enhancements */
+.hero-card-accent {
+    background: linear-gradient(135deg, rgba(0, 162, 237, 0.14) 0%, #252525 100%) !important;
+    border: 1px solid rgba(0, 162, 237, 0.55) !important;
+}
+
+.quick-action-card {
+    background-color: #252525;
+    border: 1px solid #363636;
+    border-radius: 8px;
+    padding: 12px 14px;
+    transition: all 120ms ease;
+}
+.quick-action-card:hover {
+    background-color: #2f2f2f;
+    border-color: #484848;
+}
+
+.quick-action-purple {
+    background: linear-gradient(135deg, rgba(147, 51, 234, 0.18) 0%, #252525 100%);
+    border: 1px solid rgba(147, 51, 234, 0.45);
+}
+.quick-action-purple:hover {
+    background: linear-gradient(135deg, rgba(147, 51, 234, 0.28) 0%, #2d2d2d 100%);
+    border-color: rgba(147, 51, 234, 0.65);
+}
+
+.badge-free {
+    background-color: #333333;
+    color: #b5b5b5;
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: 4px;
+    padding: 2px 6px;
+    letter-spacing: 0.5px;
+}
+
+.preset-chip {
+    background-color: #262626;
+    border: 1px solid #363636;
+    border-radius: 6px;
+    padding: 6px 12px;
+    color: #d0d0d0;
+    font-size: 12px;
+    transition: all 120ms ease;
+}
+.preset-chip:hover {
+    background-color: #323232;
+    border-color: #4a4a4a;
+    color: #ffffff;
+}
+.preset-chip-active {
+    background-color: rgba(0, 162, 237, 0.18) !important;
+    border: 1px solid #00a2ed !important;
+    color: #ffffff !important;
+    font-weight: 600;
+}
+
+.service-tile {
+    background-color: #252525;
+    border: 1px solid #343434;
+    border-radius: 8px;
+    padding: 10px 12px;
+    transition: all 120ms ease;
+}
+.service-tile:hover {
+    background-color: #2c2c2c;
+    border-color: #444444;
+}
+
+.last-msg-card {
+    background-color: #222222;
+    border: 1px solid #2d2d2d;
+    border-radius: 8px;
+    padding: 10px 14px;
+}
+
 /* ComboBox */
 combobox button.combo {
     background-color: #2e2e2e;
@@ -829,6 +906,83 @@ progressbar progress {
 /* Scrolled window */
 scrolledwindow viewport {
     background-color: transparent;
+}
+
+/* Windows Fluent 2 Enhancements */
+.hero-card-accent {
+    background: linear-gradient(135deg, rgba(0, 162, 237, 0.14) 0%, #252525 100%) !important;
+    border: 1px solid rgba(0, 162, 237, 0.55) !important;
+}
+
+.quick-action-card {
+    background-color: #252525;
+    border: 1px solid #363636;
+    border-radius: 8px;
+    padding: 12px 14px;
+    transition: all 120ms ease;
+}
+.quick-action-card:hover {
+    background-color: #2f2f2f;
+    border-color: #484848;
+}
+
+.quick-action-purple {
+    background: linear-gradient(135deg, rgba(147, 51, 234, 0.18) 0%, #252525 100%);
+    border: 1px solid rgba(147, 51, 234, 0.45);
+}
+.quick-action-purple:hover {
+    background: linear-gradient(135deg, rgba(147, 51, 234, 0.28) 0%, #2d2d2d 100%);
+    border-color: rgba(147, 51, 234, 0.65);
+}
+
+.badge-free {
+    background-color: #333333;
+    color: #b5b5b5;
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: 4px;
+    padding: 2px 6px;
+    letter-spacing: 0.5px;
+}
+
+.preset-chip {
+    background-color: #262626;
+    border: 1px solid #363636;
+    border-radius: 6px;
+    padding: 6px 12px;
+    color: #d0d0d0;
+    font-size: 12px;
+    transition: all 120ms ease;
+}
+.preset-chip:hover {
+    background-color: #323232;
+    border-color: #4a4a4a;
+    color: #ffffff;
+}
+.preset-chip-active {
+    background-color: rgba(0, 162, 237, 0.18) !important;
+    border: 1px solid #00a2ed !important;
+    color: #ffffff !important;
+    font-weight: 600;
+}
+
+.service-tile {
+    background-color: #252525;
+    border: 1px solid #343434;
+    border-radius: 8px;
+    padding: 10px 12px;
+    transition: all 120ms ease;
+}
+.service-tile:hover {
+    background-color: #2c2c2c;
+    border-color: #444444;
+}
+
+.last-msg-card {
+    background-color: #222222;
+    border: 1px solid #2d2d2d;
+    border-radius: 8px;
+    padding: 10px 14px;
 }
 
 /* ComboBox */

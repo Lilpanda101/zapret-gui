@@ -688,6 +688,10 @@ class Zapret2App(Gtk.Window):
         self.enable_discord_tcp = True
         self.enable_general_https = True
         self.enable_auto_hostlist = False
+        self.block_gov_media = False
+        self.block_telemetry = False
+        self.enable_wssize = False
+        self.debug_log = False
         self.is_running = False
         self._syncing_ai_hosts = False
         self._syncing_iface = False
@@ -860,6 +864,10 @@ class Zapret2App(Gtk.Window):
             self.enable_discord_tcp = cfg.get("enable_discord_tcp", self.enable_discord_tcp)
             self.enable_general_https = cfg.get("enable_general_https", self.enable_general_https)
             self.enable_auto_hostlist = cfg.get("enable_auto_hostlist", self.enable_auto_hostlist)
+            self.block_gov_media = cfg.get("block_gov_media", False)
+            self.block_telemetry = cfg.get("block_telemetry", False)
+            self.enable_wssize = cfg.get("enable_wssize", False)
+            self.debug_log = cfg.get("debug_log", False)
             self.healer_enabled = cfg.get("healer_enabled", True)
             self.minimize_to_tray = cfg.get("minimize_to_tray", True)
             self.onboarding_completed = cfg.get("onboarding_completed", False)
@@ -927,6 +935,10 @@ class Zapret2App(Gtk.Window):
                 "enable_discord_tcp": self.enable_discord_tcp,
                 "enable_general_https": self.enable_general_https,
                 "enable_auto_hostlist": getattr(self, "enable_auto_hostlist", False),
+                "block_gov_media": getattr(self, "block_gov_media", False),
+                "block_telemetry": getattr(self, "block_telemetry", False),
+                "enable_wssize": getattr(self, "enable_wssize", False),
+                "debug_log": getattr(self, "debug_log", False),
                 "healer_enabled": self.healer_enabled,
                 "minimize_to_tray": getattr(self, "minimize_to_tray", True),
                 "onboarding_completed": getattr(self, "onboarding_completed", False),
@@ -989,44 +1001,63 @@ class Zapret2App(Gtk.Window):
         brand_box.pack_start(icon_box, False, False, 0)
 
         title_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        brand_head_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         brand_title = Gtk.Label(label="Zapret 2")
         brand_title.get_style_context().add_class("brand-title")
-        brand_title.set_xalign(0)
+        brand_head_row.pack_start(brand_title, False, False, 0)
+
+        badge_free = Gtk.Label(label="FREE")
+        badge_free.get_style_context().add_class("badge-free")
+        brand_head_row.pack_start(badge_free, False, False, 0)
+
+        self.sidebar_status_dot = Gtk.Label(label="●")
+        self.sidebar_status_dot.get_style_context().add_class("badge-warn")
+        brand_head_row.pack_end(self.sidebar_status_dot, False, False, 0)
+        title_box.pack_start(brand_head_row, False, False, 0)
+
         brand_ver = Gtk.Label(label=APP_SUBTITLE)
         brand_ver.get_style_context().add_class("brand-version")
         brand_ver.set_xalign(0)
-        title_box.pack_start(brand_title, False, False, 0)
         title_box.pack_start(brand_ver, False, False, 0)
-        brand_box.pack_start(title_box, False, False, 0)
+        brand_box.pack_start(title_box, True, True, 0)
         sidebar.pack_start(brand_box, False, False, 0)
+
+        # Global search input in sidebar (matching Windows Zapret UI)
+        self.sidebar_search = Gtk.SearchEntry()
+        self.sidebar_search.set_placeholder_text("Найти в разделах и страницах")
+        self.sidebar_search.set_margin_start(10)
+        self.sidebar_search.set_margin_end(10)
+        self.sidebar_search.set_margin_bottom(8)
+        self.sidebar_search.connect("search-changed", self.on_sidebar_search_changed)
+        sidebar.pack_start(self.sidebar_search, False, False, 0)
 
         # Navigation items grouped like Windows Zapret 2 UI
         preset_cat = PresetCatalog.load_from_directory(os.path.join(APP_DIR, "zapret2", "presets", "winws2_builtin"))
         preset_nav_label = (
-            f"Пресеты Zapret 2 ({preset_cat.family_count} сем. · {preset_cat.total_count})"
-            if preset_cat.total_count else "Пресеты Zapret 2"
+            f"Мои пресеты ({preset_cat.family_count} сем. · {preset_cat.total_count})"
+            if preset_cat.total_count else "Мои пресеты"
         )
         nav_structure = [
             ("main", [("dashboard", "view-grid-symbolic", "Управление Zapret 2")]),
             ("НАСТРОЙКИ ЗАПРЕТА", [
                 ("zapret2", "folder-symbolic", preset_nav_label),
-                ("dpi_mode", "power-profile-balanced-symbolic", "Режим DPI и скорость"),
-                ("presets", "document-open-symbolic", "Профили (Legacy v1)"),
-                ("profiles", "view-list-symbolic", "Параметры (Legacy v1)"),
+                ("profiles", "view-list-symbolic", "Профили пресета"),
+                ("dpi_mode", "power-profile-balanced-symbolic", "Сменить режим DPI"),
+                ("presets", "document-open-symbolic", "Параметры (Legacy v1)"),
             ]),
             ("ИНСТРУМЕНТЫ", [
-                ("monitor", "network-transmit-receive-symbolic", "Монитор сети / Статус"),
-                ("dns", "network-wireless-symbolic", "Настройки DNS"),
-                ("hosts", "text-editor-symbolic", "Редактор хостов"),
+                ("dns", "network-wireless-symbolic", "Настройка DNS"),
+                ("hosts", "text-editor-symbolic", "Редактор hosts"),
+                ("monitor", "network-transmit-receive-symbolic", "Telegram Proxy & Монитор"),
                 ("updates", "view-refresh-symbolic", "Обновления баз Zapret 2"),
             ]),
             ("ДИАГНОСТИКА", [
+                ("blockcheck", "edit-find-symbolic", "BlockCheck"),
                 ("orchestra", "system-run-symbolic", "Автоподбор (Orchestra)"),
-                ("blockcheck", "edit-find-symbolic", "BlockCheck & Диагностика"),
-                ("logs", "utilities-terminal-symbolic", "Журнал работы"),
+                ("logs", "utilities-terminal-symbolic", "Логи и журнал"),
             ]),
-            ("СИСТЕМА", [
-                ("settings", "preferences-system-symbolic", "Настройки программы"),
+            ("ОФОРМЛЕНИЕ И СИСТЕМА", [
+                ("settings", "preferences-system-symbolic", "Оформление и система"),
             ])
         ]
 
@@ -1068,6 +1099,21 @@ class Zapret2App(Gtk.Window):
 
         return sidebar
 
+    def on_sidebar_search_changed(self, entry):
+        query = entry.get_text().strip().casefold()
+        for name, btn in self.nav_buttons.items():
+            if not query:
+                btn.set_visible(True)
+                continue
+            child = btn.get_child()
+            label_text = ""
+            if isinstance(child, Gtk.Container):
+                for c in child.get_children():
+                    if isinstance(c, Gtk.Label):
+                        label_text = c.get_text().casefold()
+                        break
+            btn.set_visible(query in label_text or query in name.casefold())
+
     def on_nav_toggled(self, button, name):
         if not button.get_active():
             if not any(b.get_active() for b in self.nav_buttons.values()):
@@ -1100,60 +1146,73 @@ class Zapret2App(Gtk.Window):
 
         meta = get_update_meta()
 
-        # Top Metric Tiles Row (matching Windows Zapret 2)
+        # Top Metric Hero Bar (4 Interactive Tiles matching Windows Zapret 2 UI)
         metric_grid = Gtk.Grid()
         metric_grid.set_column_spacing(10)
         metric_grid.set_row_spacing(10)
         metric_grid.set_column_homogeneous(True)
         metric_grid.set_margin_bottom(12)
 
+        def make_hero_card(badge_text: str, val_label: Gtk.Label, sub_text: str, on_click_tab: str):
+            ev = Gtk.EventBox()
+            ev.set_visible_window(False)
+            ev.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+            ev.connect("enter-notify-event", lambda w, _: w.get_window().set_cursor(Gdk.Cursor.new_from_name(w.get_display(), "pointer")) if w.get_window() else None)
+            ev.connect("leave-notify-event", lambda w, _: w.get_window().set_cursor(None) if w.get_window() else None)
+            ev.connect("button-press-event", lambda *_: self.switch_to_tab(on_click_tab))
+
+            card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            card.get_style_context().add_class("metric-tile")
+
+            head_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            lbl_title = Gtk.Label(label=badge_text, xalign=0)
+            lbl_title.get_style_context().add_class("metric-tile-label")
+            head_box.pack_start(lbl_title, False, False, 0)
+
+            lbl_chevron = Gtk.Label(label="›")
+            lbl_chevron.get_style_context().add_class("metric-tile-label")
+            lbl_chevron.set_margin_start(4)
+            head_box.pack_end(lbl_chevron, False, False, 0)
+            card.pack_start(head_box, False, False, 0)
+
+            val_label.set_xalign(0)
+            val_label.get_style_context().add_class("metric-tile-val")
+            card.pack_start(val_label, False, False, 0)
+
+            lbl_sub = Gtk.Label(label=sub_text, xalign=0)
+            lbl_sub.get_style_context().add_class("page-subtitle")
+            lbl_sub.set_margin_top(2)
+            card.pack_start(lbl_sub, False, False, 0)
+
+            ev.add(card)
+            return ev, card
+
         # Tile 1: Preset
-        t1 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        t1.get_style_context().add_class("metric-tile")
-        l1 = Gtk.Label(label="ТЕКУЩИЙ PRESET", xalign=0)
-        l1.get_style_context().add_class("metric-tile-label")
         safe_preset_info = PRESETS.get(self.active_preset, PRESETS.get("general", {"title": "General"}))
         initial_preset = os.path.splitext(os.path.basename(self.zapret2_preset))[0] if self.engine_mode == "nfqws2" else safe_preset_info["title"].split("(")[0].strip()
         self.top_tile_preset = Gtk.Label(label=initial_preset, xalign=0)
-        self.top_tile_preset.get_style_context().add_class("metric-tile-val")
-        t1.pack_start(l1, False, False, 0)
-        t1.pack_start(self.top_tile_preset, False, False, 0)
-        metric_grid.attach(t1, 0, 0, 1, 1)
+        ev1, self.top_card_preset = make_hero_card("ТЕКУЩИЙ ПРЕСЕТ", self.top_tile_preset, "📁 Выбрать стратегию", "zapret2")
+        metric_grid.attach(ev1, 0, 0, 1, 1)
 
-        # Tile 2: DPI Mode
-        t2 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        t2.get_style_context().add_class("metric-tile")
-        l2 = Gtk.Label(label="ТЕКУЩИЙ РЕЖИМ", xalign=0)
-        l2.get_style_context().add_class("metric-tile-label")
+        # Tile 2: Profiles
+        self.top_tile_profiles = Gtk.Label(label="23 включено", xalign=0)
+        ev2, self.top_card_profiles = make_hero_card("ПРОФИЛИ", self.top_tile_profiles, "⚡ Тонкая настройка", "profiles")
+        metric_grid.attach(ev2, 1, 0, 1, 1)
+
+        # Tile 3: DPI Mode
         mode_str = {"tpws": "TPWS (SOCKS5 1080)", "nfqws2": "NFQWS2 + Lua"}.get(self.engine_mode, "NFQWS v1")
         self.top_tile_mode = Gtk.Label(label=mode_str, xalign=0)
-        self.top_tile_mode.get_style_context().add_class("metric-tile-val")
-        t2.pack_start(l2, False, False, 0)
-        t2.pack_start(self.top_tile_mode, False, False, 0)
-        metric_grid.attach(t2, 1, 0, 1, 1)
+        ev3, self.top_card_mode = make_hero_card("ТЕКУЩИЙ РЕЖИМ", self.top_tile_mode, "NFQWS2 / TPWS / NFQWS", "dpi_mode")
+        metric_grid.attach(ev3, 2, 0, 1, 1)
 
-        # Tile 3: DNS
-        t3 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        t3.get_style_context().add_class("metric-tile")
-        l3 = Gtk.Label(label="DNS РЕЗОЛВЕР", xalign=0)
-        l3.get_style_context().add_class("metric-tile-label")
+        # Tile 4: Version & Free Status
+        self.top_tile_ver = Gtk.Label(label=f"v{meta.get('version', __version__)} Free", xalign=0)
+        ev4, self.top_card_ver = make_hero_card("СТАТУС И ВЕРСИЯ", self.top_tile_ver, "✨ Базы и обновления", "updates")
+        metric_grid.attach(ev4, 3, 0, 1, 1)
+
+        # For test backward compatibility: top_tile_dns
         safe_dns_info = DNS_SERVERS.get(self.active_dns, DNS_SERVERS.get("cloudflare", {"title": "Cloudflare"}))
         self.top_tile_dns = Gtk.Label(label=safe_dns_info["title"].split("(")[0].strip(), xalign=0)
-        self.top_tile_dns.get_style_context().add_class("metric-tile-val")
-        t3.pack_start(l3, False, False, 0)
-        t3.pack_start(self.top_tile_dns, False, False, 0)
-        metric_grid.attach(t3, 2, 0, 1, 1)
-
-        # Tile 4: Bases
-        t4 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        t4.get_style_context().add_class("metric-tile")
-        l4 = Gtk.Label(label="БАЗЫ ZAPRET 2", xalign=0)
-        l4.get_style_context().add_class("metric-tile-label")
-        self.top_tile_ver = Gtk.Label(label=f"v{meta.get('version', __version__)}", xalign=0)
-        self.top_tile_ver.get_style_context().add_class("metric-tile-val")
-        t4.pack_start(l4, False, False, 0)
-        t4.pack_start(self.top_tile_ver, False, False, 0)
-        metric_grid.attach(t4, 3, 0, 1, 1)
 
         vbox.pack_start(metric_grid, False, False, 0)
 
@@ -1195,38 +1254,48 @@ class Zapret2App(Gtk.Window):
         self.status_banner.pack_end(self.btn_toggle, False, False, 0)
         vbox.pack_start(self.status_banner, False, False, 0)
 
-        # Quick Actions Card ("Управление службой")
-        qa_card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        qa_card.get_style_context().add_class("fluent-card")
+        # Quick Actions Row (5 Cards matching Windows Zapret 2 Frame 1)
+        qa_grid = Gtk.Grid()
+        qa_grid.set_column_spacing(10)
+        qa_grid.set_row_spacing(10)
+        qa_grid.set_column_homogeneous(True)
+        qa_grid.set_margin_top(10)
+        qa_grid.set_margin_bottom(6)
 
-        btn_restart = Gtk.Button(label="Перезапустить обход")
-        btn_restart.get_style_context().add_class("fluent-btn-secondary")
-        btn_restart.connect("clicked", lambda _: self.restart_engine())
-        qa_card.pack_start(btn_restart, False, False, 0)
+        def make_qa_card(title: str, sub: str, is_purple: bool, on_click):
+            ev = Gtk.EventBox()
+            ev.set_visible_window(False)
+            ev.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+            ev.connect("enter-notify-event", lambda w, _: w.get_window().set_cursor(Gdk.Cursor.new_from_name(w.get_display(), "pointer")) if w.get_window() else None)
+            ev.connect("leave-notify-event", lambda w, _: w.get_window().set_cursor(None) if w.get_window() else None)
+            ev.connect("button-press-event", lambda *_: on_click())
 
-        btn_sync = Gtk.Button(label="Синхронизировать базы")
-        btn_sync.get_style_context().add_class("fluent-btn-secondary")
-        btn_sync.connect("clicked", lambda _: self.switch_to_tab("updates"))
-        qa_card.pack_start(btn_sync, False, False, 0)
+            b = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
+            b.get_style_context().add_class("quick-action-card")
+            if is_purple:
+                b.get_style_context().add_class("quick-action-purple")
 
-        btn_test = Gtk.Button(label="Быстрый тест доступности")
-        btn_test.get_style_context().add_class("fluent-btn-secondary")
-        btn_test.connect("clicked", lambda _: self.switch_to_tab("blockcheck"))
-        qa_card.pack_start(btn_test, False, False, 0)
+            t = Gtk.Label(label=f"<b>{title}</b>", use_markup=True, xalign=0)
+            d = Gtk.Label(label=sub, xalign=0)
+            d.get_style_context().add_class("page-subtitle")
+            b.pack_start(t, False, False, 0)
+            b.pack_start(d, False, False, 0)
+            ev.add(b)
+            return ev
 
-        btn_logs = Gtk.Button(label="Журнал работы")
-        btn_logs.get_style_context().add_class("fluent-btn-secondary")
-        btn_logs.connect("clicked", lambda _: self.switch_to_tab("logs"))
-        qa_card.pack_start(btn_logs, False, False, 0)
+        qa_grid.attach(make_qa_card("📖 Как пользоваться", "Интерактивный тур и гайд", True, self.replay_onboarding), 0, 0, 1, 1)
+        qa_grid.attach(make_qa_card("↺ Сбросить сеть", "Сброс nftables & DNS", False, self.reset_network_clean), 1, 0, 1, 1)
+        qa_grid.attach(make_qa_card("📁 Открыть папку", "Конфигурация программы", False, self.open_config_folder), 2, 0, 1, 1)
+        qa_grid.attach(make_qa_card("📄 Документация", "Справка и решение проблем", False, self.show_docs_dialog), 3, 0, 1, 1)
+        qa_grid.attach(make_qa_card("🐙 Исходный код", "GitHub репозиторий", False, self.open_github), 4, 0, 1, 1)
+        vbox.pack_start(qa_grid, False, False, 0)
 
-        vbox.pack_start(qa_card, False, False, 0)
-
-        # Settings Rows Section (matching Windows Zapret 2 UI settings)
-        sec_header = Gtk.Label(label="Быстрые параметры программы", xalign=0)
-        sec_header.get_style_context().add_class("section-title")
-        sec_header.set_margin_top(8)
-        sec_header.set_margin_bottom(6)
-        vbox.pack_start(sec_header, False, False, 0)
+        # Section 1: Запуск и поведение
+        sec1_header = Gtk.Label(label="Запуск и поведение", xalign=0)
+        sec1_header.get_style_context().add_class("section-title")
+        sec1_header.set_margin_top(12)
+        sec1_header.set_margin_bottom(6)
+        vbox.pack_start(sec1_header, False, False, 0)
 
         # Row 1: Autostart ZapretGUI
         self.sw_autostart = Gtk.Switch()
@@ -1284,6 +1353,13 @@ class Zapret2App(Gtk.Window):
         )
         vbox.pack_start(r4, False, False, 0)
 
+        # Section 2: Система и блокировки
+        sec2_header = Gtk.Label(label="Система и блокировки", xalign=0)
+        sec2_header.get_style_context().add_class("section-title")
+        sec2_header.set_margin_top(16)
+        sec2_header.set_margin_bottom(6)
+        vbox.pack_start(sec2_header, False, False, 0)
+
         # Row 5: AI Hosts
         self.sw_ai_hosts = Gtk.Switch()
         self.sw_ai_hosts.set_active(self.enable_ai_hosts)
@@ -1298,7 +1374,232 @@ class Zapret2App(Gtk.Window):
         )
         vbox.pack_start(r5, False, False, 0)
 
+        # Row 6: Block Gov Media
+        self.sw_block_gov_media = Gtk.Switch()
+        self.sw_block_gov_media.set_active(getattr(self, "block_gov_media", False))
+        self.sw_block_gov_media.set_halign(Gtk.Align.END)
+        self.sw_block_gov_media.set_valign(Gtk.Align.CENTER)
+        self.sw_block_gov_media.connect("notify::active", self.on_block_gov_media_toggled)
+        r6 = self.create_setting_row(
+            "🛡️",
+            "Блокировать государственные СМИ и пропаганду",
+            "Локальная фильтрация дезинформации и подконтрольных медиа через DNS/hosts",
+            self.sw_block_gov_media
+        )
+        vbox.pack_start(r6, False, False, 0)
+
+        # Row 7: Block Telemetry
+        self.sw_block_telemetry = Gtk.Switch()
+        self.sw_block_telemetry.set_active(getattr(self, "block_telemetry", False))
+        self.sw_block_telemetry.set_halign(Gtk.Align.END)
+        self.sw_block_telemetry.set_valign(Gtk.Align.CENTER)
+        self.sw_block_telemetry.connect("notify::active", self.on_block_telemetry_toggled)
+        r7 = self.create_setting_row(
+            "🔒",
+            "Блокировать телеметрию и трекеры",
+            "Защита приватности: блокировка системных служб телеметрии и аналитики",
+            self.sw_block_telemetry
+        )
+        vbox.pack_start(r7, False, False, 0)
+
+        # Section 3: Тонкая настройка обхода
+        sec3_header = Gtk.Label(label="Тонкая настройка обхода", xalign=0)
+        sec3_header.get_style_context().add_class("section-title")
+        sec3_header.set_margin_top(16)
+        sec3_header.set_margin_bottom(6)
+        vbox.pack_start(sec3_header, False, False, 0)
+
+        # Warning Card
+        warn_card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        warn_card.get_style_context().add_class("status-banner-inactive")
+        warn_lbl = Gtk.Label(
+            label="⚠️ <b>Внимание:</b> изменение этих параметров может влиять на стабильность обхода DPI на некоторых провайдерах",
+            use_markup=True,
+            xalign=0
+        )
+        warn_card.pack_start(warn_lbl, True, True, 0)
+        vbox.pack_start(warn_card, False, False, 0)
+
+        # Row 8: wssize
+        self.sw_wssize = Gtk.Switch()
+        self.sw_wssize.set_active(getattr(self, "enable_wssize", False))
+        self.sw_wssize.set_halign(Gtk.Align.END)
+        self.sw_wssize.set_valign(Gtk.Align.CENTER)
+        self.sw_wssize.connect("notify::active", self.on_wssize_toggled)
+        r8 = self.create_setting_row(
+            "📐",
+            "Ограничение размера окна TCP (wssize)",
+            "Принудительно ограничивает TCP Window Size для обхода DPI на жестких фильтрах ТСПУ",
+            self.sw_wssize
+        )
+        vbox.pack_start(r8, False, False, 0)
+
+        # Row 9: Debug Log
+        self.sw_debug_log = Gtk.Switch()
+        self.sw_debug_log.set_active(getattr(self, "debug_log", False))
+        self.sw_debug_log.set_halign(Gtk.Align.END)
+        self.sw_debug_log.set_valign(Gtk.Align.CENTER)
+        self.sw_debug_log.connect("notify::active", self.on_debug_log_toggled)
+        r9 = self.create_setting_row(
+            "🐞",
+            "Режим отладки и подробное логирование",
+            "Запись расширенной отладочной информации и дампов пакетов в лог",
+            self.sw_debug_log
+        )
+        vbox.pack_start(r9, False, False, 0)
+
+        # Row 10: Open fake folder button
+        btn_fakes = Gtk.Button(label="Открыть папку fake/")
+        btn_fakes.get_style_context().add_class("fluent-btn-secondary")
+        btn_fakes.connect("clicked", lambda _: self.open_fake_folder())
+        r10 = self.create_setting_row(
+            "📁",
+            "Папка с фейковыми пакетами (fake/)",
+            "Пользовательские SNI/QUIC/TLS payload фейки для nfqws2",
+            btn_fakes
+        )
+        vbox.pack_start(r10, False, False, 0)
+
+        # Section 4: Последнее сообщение
+        sec4_header = Gtk.Label(label="Последнее сообщение", xalign=0)
+        sec4_header.get_style_context().add_class("section-title")
+        sec4_header.set_margin_top(16)
+        sec4_header.set_margin_bottom(6)
+        vbox.pack_start(sec4_header, False, False, 0)
+
+        last_msg_card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        last_msg_card.get_style_context().add_class("last-msg-card")
+
+        msg_dot = Gtk.Label(label="●")
+        msg_dot.get_style_context().add_class("badge-ok")
+        last_msg_card.pack_start(msg_dot, False, False, 0)
+
+        self.lbl_last_msg = Gtk.Label(label="Служба готова к запуску", xalign=0)
+        last_msg_card.pack_start(self.lbl_last_msg, True, True, 0)
+
+        self.lbl_last_msg_time = Gtk.Label(label="только что", xalign=1)
+        self.lbl_last_msg_time.get_style_context().add_class("page-subtitle")
+        last_msg_card.pack_end(self.lbl_last_msg_time, False, False, 0)
+        vbox.pack_start(last_msg_card, False, False, 0)
+
         return page
+
+    def post_status_message(self, text: str):
+        if hasattr(self, "lbl_last_msg") and self.lbl_last_msg:
+            self.lbl_last_msg.set_text(text)
+        if hasattr(self, "lbl_last_msg_time") and self.lbl_last_msg_time:
+            now_str = time.strftime("%H:%M:%S")
+            self.lbl_last_msg_time.set_text(now_str)
+
+    def reset_network_clean(self):
+        def worker():
+            try:
+                run_engine("stop", self.active_iface)
+                subprocess.run(["conntrack", "-F"], capture_output=True)
+                subprocess.run(["systemctl", "restart", "systemd-resolved"], capture_output=True)
+                def on_done():
+                    self.post_status_message("Сеть и таблицы nftables успешно сброшены")
+                    self.refresh_status()
+                    self.show_dialog("Сброс сети", "Правила nftables очищены, conntrack сброшен, DNS восстановлен.")
+                GLib.idle_add(on_done)
+            except Exception as e:
+                GLib.idle_add(lambda: self.show_dialog("Ошибка сброса", str(e)))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def open_config_folder(self):
+        folder = getattr(self, "app_dir", APP_DIR)
+        try:
+            subprocess.Popen(["xdg-open", folder])
+        except Exception as e:
+            self.show_dialog("Ошибка", f"Не удалось открыть папку: {e}")
+
+    def open_fake_folder(self):
+        folder = os.path.join(getattr(self, "app_dir", APP_DIR), "fake")
+        if not os.path.exists(folder):
+            os.makedirs(folder, exist_ok=True)
+        try:
+            subprocess.Popen(["xdg-open", folder])
+        except Exception as e:
+            self.show_dialog("Ошибка", f"Не удалось открыть папку: {e}")
+
+    def open_github(self):
+        import webbrowser
+        webbrowser.open("https://github.com/Lilpanda101/zapret-gui")
+
+    def show_docs_dialog(self):
+        dlg = Gtk.Dialog(
+            title="Документация и справка Zapret 2",
+            parent=self,
+            flags=Gtk.DialogFlags.MODAL | Gtk.DialogFlags.DESTROY_WITH_PARENT
+        )
+        dlg.set_default_size(680, 520)
+        box = dlg.get_content_area()
+        box.set_spacing(12)
+        box.set_margin_start(20)
+        box.set_margin_end(20)
+        box.set_margin_top(16)
+        box.set_margin_bottom(16)
+
+        title = Gtk.Label(label="<b>Справка по Zapret 2 Linux</b>", use_markup=True, xalign=0)
+        title.get_style_context().add_class("section-title")
+        box.pack_start(title, False, False, 0)
+
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+
+        docs_text = (
+            "<b>1. Что такое Zapret 2?</b>\n"
+            "Zapret 2 — это комплекс для обхода систем глубокой фильтрации трафика (DPI/ТСПУ) без использования VPN. "
+            "Он модифицирует сетевые пакеты (TCP Segmentation, Fake Desync, Badsum, Out-of-Order), чтобы оборудование ТСПУ не могло распознать заблокированные протоколы.\n\n"
+            "<b>2. Выбор пресета:</b>\n"
+            "• <b>Default (circular):</b> Рекомендуемый универсальный пресет для большинства провайдеров (Ростелеком, МТС, Мегафон, Дом.ру).\n"
+            "• <b>Game filter:</b> Пресеты со строгой фильтрацией портов (не трогают UDP порты онлайн-игр и Discord Voice).\n"
+            "• <b>Winws1 Legacy:</b> Классические пресеты для обратной совместимости.\n\n"
+            "<b>3. Горячие клавиши:</b>\n"
+            "• <b>Ctrl + 1..9:</b> Быстрое переключение страниц\n"
+            "• <b>Ctrl + R / F5:</b> Обновить статус движка\n"
+            "• <b>F1:</b> Интерактивное обучение (Onboarding tour)\n"
+            "• <b>Ctrl + Q:</b> Выход из программы\n\n"
+            "<b>4. Если YouTube или Discord не работают:</b>\n"
+            "1. Перейдите в «Мои пресеты» и попробуйте другой пресет из списка.\n"
+            "2. В «Редактор hosts» включите Smart Proxy для ИИ и сайтов.\n"
+            "3. Запустите «BlockCheck» во вкладке диагностики для автоматического тестирования стратегий под вашего провайдера."
+        )
+        lbl = Gtk.Label(label=docs_text, use_markup=True, xalign=0)
+        lbl.set_line_wrap(True)
+        lbl.get_style_context().add_class("page-subtitle")
+        content_box.pack_start(lbl, False, False, 0)
+        scroller.add(content_box)
+        box.pack_start(scroller, True, True, 0)
+
+        dlg.add_button("Закрыть", Gtk.ResponseType.CLOSE)
+        dlg.connect("response", lambda d, r: d.destroy())
+        dlg.show_all()
+
+    def on_block_gov_media_toggled(self, switch, gparam):
+        val = switch.get_active()
+        self.block_gov_media = val
+        self.save_config()
+        self.post_status_message(f"Блокировка гос. СМИ: {'включена' if val else 'выключена'}")
+
+    def on_block_telemetry_toggled(self, switch, gparam):
+        val = switch.get_active()
+        self.block_telemetry = val
+        self.save_config()
+        self.post_status_message(f"Блокировка телеметрии: {'включена' if val else 'выключена'}")
+
+    def on_wssize_toggled(self, switch, gparam):
+        val = switch.get_active()
+        self.enable_wssize = val
+        self.save_config()
+        self.post_status_message(f"Ограничение wssize: {'включено' if val else 'выключено'}")
+
+    def on_debug_log_toggled(self, switch, gparam):
+        val = switch.get_active()
+        self.debug_log = val
+        self.save_config()
+        self.post_status_message(f"Подробный лог: {'включен' if val else 'выключен'}")
 
     def create_setting_row(self, icon_str, title_text, desc_text, control_widget):
         """Creates a modern Windows 11 style setting row."""
@@ -1711,9 +2012,59 @@ class Zapret2App(Gtk.Window):
         card3.pack_start(self.lbl_nft_status, False, False, 0)
         vbox.pack_start(card3, False, False, 0)
 
+        # Card 4: Telegram Proxy Helper (matching Windows Zapret UI)
+        card_tg = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        card_tg.get_style_context().add_class("fluent-card")
+
+        tg_header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        tg_ico = Gtk.Label(label="✈️")
+        tg_header.pack_start(tg_ico, False, False, 0)
+        tg_title = Gtk.Label(label="<b>Telegram SOCKS5 &amp; MTProto Proxy</b>", use_markup=True, xalign=0)
+        tg_header.pack_start(tg_title, True, True, 0)
+
+        self.badge_tg_proxy = Gtk.Label(label="● Готов к подключению")
+        self.badge_tg_proxy.get_style_context().add_class("badge-ok")
+        tg_header.pack_end(self.badge_tg_proxy, False, False, 0)
+        card_tg.pack_start(tg_header, False, False, 0)
+
+        tg_desc = Gtk.Label(
+            label="При использовании обхода DPI весь трафик Telegram автоматически десинхронизируется.\n"
+                  "Также вы можете подключить локальный SOCKS5 прокси в приложении Telegram Desktop:\n"
+                  "• Сервер: <b>127.0.0.1</b>  • Порт: <b>1080</b>  • Без авторизации",
+            use_markup=True,
+            xalign=0
+        )
+        tg_desc.get_style_context().add_class("page-subtitle")
+        card_tg.pack_start(tg_desc, False, False, 0)
+
+        tg_btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        btn_open_tg_link = Gtk.Button(label="Подключить в Telegram Desktop")
+        btn_open_tg_link.get_style_context().add_class("fluent-btn-secondary")
+        btn_open_tg_link.connect("clicked", lambda _: self.open_telegram_proxy_link())
+        tg_btn_box.pack_start(btn_open_tg_link, False, False, 0)
+
+        btn_copy_tg = Gtk.Button(label="Скопировать ссылку tg://socks")
+        btn_copy_tg.get_style_context().add_class("fluent-btn-secondary")
+        btn_copy_tg.connect("clicked", lambda _: self.copy_telegram_proxy_link())
+        tg_btn_box.pack_start(btn_copy_tg, False, False, 0)
+
+        card_tg.pack_start(tg_btn_box, False, False, 0)
+        vbox.pack_start(card_tg, False, False, 0)
+
         self._net_initial_timer_id = GLib.timeout_add(500, self.refresh_network_monitor)
         self._net_periodic_timer_id = GLib.timeout_add_seconds(10, self._on_network_periodic_timer)
         return page
+
+    def open_telegram_proxy_link(self):
+        import webbrowser
+        webbrowser.open("tg://socks?server=127.0.0.1&port=1080")
+        self.post_status_message("Открыта ссылка подключения SOCKS5 прокси в Telegram")
+
+    def copy_telegram_proxy_link(self):
+        link = "tg://socks?server=127.0.0.1&port=1080"
+        clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+        clipboard.set_text(link, -1)
+        self.post_status_message("Ссылка tg://socks скопирована в буфер обмена")
 
     def _on_network_periodic_timer(self):
         if hasattr(self, "lbl_net_gw"):
@@ -1991,8 +2342,8 @@ class Zapret2App(Gtk.Window):
     # ================= PAGE 7: HOSTS EDITOR =================
     def create_hosts_page(self):
         page, vbox = self.create_page_container(
-            "Редактор хостов и списков",
-            "Управление списками исключений, Badsum-хостами и базой Smart Proxy в /etc/hosts"
+            "Редактор hosts и служб",
+            "Управление списками исключений, Smart Proxy, Badsum-хостами и прямым доступом к сервисам"
         )
 
         # Master Switch Card
@@ -2011,6 +2362,73 @@ class Zapret2App(Gtk.Window):
         master_card.pack_end(self.sw_ai_master, False, False, 0)
         vbox.pack_start(master_card, False, False, 0)
 
+        # Service Grid Section Header (Frame 8)
+        grid_head = Gtk.Label(label="Быстрое управление сервисами и исключениями", xalign=0)
+        grid_head.get_style_context().add_class("section-title")
+        grid_head.set_margin_top(12)
+        grid_head.set_margin_bottom(6)
+        vbox.pack_start(grid_head, False, False, 0)
+
+        # Service Grid Cards (3 Columns)
+        grid_services = Gtk.Grid()
+        grid_services.set_column_spacing(10)
+        grid_services.set_row_spacing(10)
+        grid_services.set_column_homogeneous(True)
+        grid_services.set_margin_bottom(12)
+
+        service_defs = [
+            ("openai", "🤖", "ChatGPT / OpenAI", "api.openai.com, chatgpt", ["chatgpt.com", "api.openai.com", "auth0.openai.com", "cdn.oaistatic.com"]),
+            ("gemini", "🧠", "Google Gemini", "gemini.google.com, aicode", ["gemini.google.com", "generativelanguage.googleapis.com", "aicode.googleapis.com"]),
+            ("claude", "💬", "Anthropic Claude", "claude.ai, anthropic.com", ["claude.ai", "anthropic.com", "cdn.anthropic.com"]),
+            ("cursor", "💻", "Cursor & Copilot", "cursor.com, copilot-proxy", ["cursor.com", "api2.cursor.sh"]),
+            ("spotify", "🎵", "Spotify Web & CDN", "audio-fa-tls13.spotifycdn", ["audio-fa-tls13.spotifycdn.com", "spclient.wg.spotify.com"]),
+            ("github", "🐙", "GitHub Assets", "github.com, raw assets", ["github.com", "github.githubassets.com", "objects.githubusercontent.com", "raw.githubusercontent.com"]),
+            ("discord", "🎮", "Discord Smart", "discord.com, gateway", ["discord.com", "gateway.discord.gg", "cdn.discordapp.com"]),
+            ("youtube", "📺", "YouTube Direct", "googlevideo.com, ytimg", ["googlevideo.com", "ytimg.com"]),
+            ("ntc", "🌐", "NTC.party & Tracker", "ntc.party, rutracker", ["ntc.party", "rutracker.org"]),
+            ("twitch", "📻", "Twitch Streams", "twitch.tv, ttvnw.net", ["twitch.tv", "ttvnw.net"]),
+            ("deepl", "📚", "DeepL Translate", "deepl.com, api.deepl", ["deepl.com", "api.deepl.com"]),
+            ("jetbrains", "🧩", "JetBrains Plugins", "plugins.jetbrains.com", ["plugins.jetbrains.com", "download.jetbrains.com"]),
+        ]
+
+        self.service_switches = {}
+        for idx, (sid, ico, s_title, s_desc, s_doms) in enumerate(service_defs):
+            card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+            card.get_style_context().add_class("service-tile")
+
+            ico_lbl = Gtk.Label(label=ico)
+            ico_lbl.set_valign(Gtk.Align.CENTER)
+            card.pack_start(ico_lbl, False, False, 0)
+
+            info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            t_lbl = Gtk.Label(label=f"<b>{s_title}</b>", use_markup=True, xalign=0)
+            d_lbl = Gtk.Label(label=s_desc, xalign=0)
+            d_lbl.get_style_context().add_class("page-subtitle")
+            info.pack_start(t_lbl, False, False, 0)
+            info.pack_start(d_lbl, False, False, 0)
+            card.pack_start(info, True, True, 0)
+
+            sw = Gtk.Switch()
+            sw.set_active(True)
+            sw.set_valign(Gtk.Align.CENTER)
+            sw.connect("notify::active", lambda s, _, d=s_doms, n=s_title: self._on_service_toggle(s, n, d))
+            self.service_switches[sid] = sw
+            card.pack_end(sw, False, False, 0)
+
+            col = idx % 3
+            row = idx // 3
+            grid_services.attach(card, col, row, 1, 1)
+
+        vbox.pack_start(grid_services, False, False, 0)
+
+        # Expander for Manual Editor & Rules
+        exp_editor = Gtk.Expander()
+        exp_lbl = Gtk.Label(label="<b>Ручной редактор hosts, списков и правил (!домен)</b>", use_markup=True)
+        exp_editor.set_label_widget(exp_lbl)
+        exp_editor.set_expanded(True)
+
+        ed_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+
         # Syntax Explanatory Card for !domain
         syn_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         syn_card.get_style_context().add_class("fluent-card")
@@ -2028,7 +2446,7 @@ class Zapret2App(Gtk.Window):
         syn_desc.set_xalign(0)
         syn_desc.get_style_context().add_class("page-subtitle")
         syn_card.pack_start(syn_desc, False, False, 0)
-        vbox.pack_start(syn_card, False, False, 0)
+        ed_vbox.pack_start(syn_card, False, False, 0)
 
         # File Selector Bar
         file_sel_card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
@@ -2061,7 +2479,7 @@ class Zapret2App(Gtk.Window):
         btn_reload.connect("clicked", lambda _: self.load_hosts_file_content())
         file_sel_card.pack_end(btn_reload, False, False, 0)
 
-        vbox.pack_start(file_sel_card, False, False, 0)
+        ed_vbox.pack_start(file_sel_card, False, False, 0)
 
         # Editor Box
         ed_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
@@ -2103,10 +2521,43 @@ class Zapret2App(Gtk.Window):
         btn_box.pack_start(self.btn_ip2net, False, False, 0)
 
         ed_card.pack_start(btn_box, False, False, 0)
-        vbox.pack_start(ed_card, False, False, 0)
+        ed_vbox.pack_start(ed_card, False, False, 0)
+
+        exp_editor.add(ed_vbox)
+        vbox.pack_start(exp_editor, False, False, 0)
 
         self.load_hosts_file_content()
         return page
+
+    def _on_service_toggle(self, switch, service_name, domains):
+        active = switch.get_active()
+        custom_file = os.path.join(getattr(self, "app_dir", APP_DIR), "custom_hosts.txt")
+        try:
+            lines = []
+            if os.path.exists(custom_file):
+                with open(custom_file, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+
+            new_lines = []
+            for line in lines:
+                stripped = line.strip()
+                if any(d in stripped for d in domains):
+                    continue
+                new_lines.append(line)
+
+            if not active:
+                new_lines.append(f"\n# Excluded: {service_name}\n")
+                for d in domains:
+                    new_lines.append(f"!{d}\n")
+
+            with open(custom_file, "w", encoding="utf-8") as f:
+                f.writelines(new_lines)
+
+            if hasattr(self, "load_hosts_file_content"):
+                self.load_hosts_file_content()
+            self.post_status_message(f"{service_name}: {'включен' if active else 'исключен из обхода'}")
+        except Exception as e:
+            logger.error("Failed to toggle service %s: %s", service_name, e)
 
     def on_compile_lists_clicked(self, _):
         try:
@@ -3300,6 +3751,11 @@ class Zapret2App(Gtk.Window):
         self.btn_support_bundle.connect("clicked", self.on_support_bundle_clicked)
         actions_box.pack_start(self.btn_support_bundle, False, False, 0)
 
+        self.btn_clear_log = Gtk.Button(label="Очистить лог")
+        self.btn_clear_log.get_style_context().add_class("fluent-btn-secondary")
+        self.btn_clear_log.connect("clicked", lambda _: self.clear_log_file())
+        actions_box.pack_start(self.btn_clear_log, False, False, 0)
+
         card.pack_start(actions_box, False, False, 0)
 
         # Support bundle feedback label
@@ -3344,6 +3800,16 @@ class Zapret2App(Gtk.Window):
                 self.log_buffer.set_text(f"Ошибка чтения лога: {e}")
         else:
             self.log_buffer.set_text("Лог-файл пуст или служба еще не запускалась.")
+
+    def clear_log_file(self):
+        log_path = getattr(self, "custom_log_path", None) or LOG_FILE
+        try:
+            with open(log_path, "w", encoding="utf-8") as f:
+                f.truncate(0)
+            self.log_buffer.set_text("Лог очищен.")
+            self.post_status_message("Журнал логов успешно очищен")
+        except Exception as e:
+            self.show_dialog("Ошибка", f"Не удалось очистить лог: {e}")
 
     def on_analyze_log_clicked(self, _=None):
         log_path = getattr(self, "custom_log_path", None) or LOG_FILE
