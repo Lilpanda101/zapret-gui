@@ -40,7 +40,7 @@ EXCLUDE_FILE = os.path.join(APP_DIR, "exclude.txt")
 HOSTS_FILE = os.path.join(APP_DIR, "hosts.txt")
 UPDATE_META_FILE = os.path.expanduser("~/.config/zapret-gui/update_meta.json")
 
-RESCUE_DIR = "/mnt/hdd2tb/DataStore/Temp/zapret-gui-rescue"
+RESCUE_DIR = os.path.expanduser("~/.local/share/zapret-gui/rescue")
 DEFAULT_PRESERVE = [
     os.path.expanduser("~/.config/zapret-gui"),
     os.path.expanduser("~/.config/zapret-gui/config.json"),

@@ -1,6 +1,6 @@
 -- custom helper for nfqws2
 -- load after zapret-lib.lua and zapret-antidpi.lua:
---   --lua-init=@/mnt/g/Privacy/zapret2_custom/fakemultisplit.lua
+--   --lua-init=@zapret2/lua/fakemultisplit.lua
 --
 -- usage example:
 --   --lua-desync=fakemultisplit:fake_blob=fake_default_tls:pos=1,midsld:seqovl=5:seqovl_pattern=0x1603030000
