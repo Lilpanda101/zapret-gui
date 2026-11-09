@@ -25,6 +25,13 @@ support_bundle_*.zip
 dist/
 build/
 *.egg-info/
+packaging/pkg/
+packaging/src/
+packaging/*.pkg.tar.*
+packaging/*.deb
+packaging/*.tar.gz
+packaging/install.sh
+packaging/SHA256SUMS.txt
 
 # Local logs and runtimes
 *.log
